@@ -25,6 +25,7 @@ import (
 	"github.com/pkt-cash/pktd/addrmgr"
 	"github.com/pkt-cash/pktd/blockchain"
 	"github.com/pkt-cash/pktd/blockchain/indexers"
+	"github.com/pkt-cash/pktd/blockchain/votecompute"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/bloom"
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -211,6 +212,7 @@ type server struct {
 	txIndex   *indexers.TxIndex
 	addrIndex *indexers.AddrIndex
 	cfIndex   *indexers.CfIndex
+	votes     *indexers.VotesIndex
 
 	// The fee estimator keeps track of how long transactions are left in
 	// the mempool before they are mined into blocks.
@@ -2615,6 +2617,16 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 		s.cfIndex = indexers.NewCfIndex(db, chainParams)
 		indexes = append(indexes, s.cfIndex)
 	}
+	var voteCompute *votecompute.VoteCompute
+	if cfg.Votes {
+		votes, err := indexers.NewVotes(db, chainParams)
+		if err != nil {
+			return nil, err
+		}
+		s.votes = votes
+		indexes = append(indexes, s.votes)
+		voteCompute = votes.VoteCompute()
+	}
 
 	// Create an index manager if any of the optional indexes are enabled.
 	var indexManager blockchain.IndexManager
@@ -2639,6 +2651,7 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 		SigCache:     s.sigCache,
 		IndexManager: indexManager,
 		HashCache:    s.hashCache,
+		Votes:        voteCompute,
 	})
 	if err != nil {
 		return nil, err
