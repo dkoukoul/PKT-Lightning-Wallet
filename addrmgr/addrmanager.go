@@ -785,11 +785,23 @@ func NetAddressKey(na *wire.NetAddress) string {
 	return net.JoinHostPort(ipString(na), port)
 }
 
+func isGoodAddress(a *KnownAddress, relaxedMode bool) bool {
+	if relaxedMode {
+		return true
+	} else if a.srcAddr.Services&protocol.SFTrusted == protocol.SFTrusted {
+		return true
+	} else if a.lastsuccess.After(time.Unix(0, 0)) {
+		return true
+	} else {
+		return false
+	}
+}
+
 // GetAddress returns a single address that should be routable.  It picks a
 // random one from the possible addresses with preference given to ones that
 // have not been used recently and should not pick 'close' addresses
 // consecutively.
-func (a *AddrManager) GetAddress() *KnownAddress {
+func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 	// Protect concurrent access.
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
@@ -812,11 +824,14 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 
 			// Pick a random entry in the list
 			e := a.addrTried[bucket].Front()
-			for i :=
-				a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0; i-- {
+			var ka *KnownAddress
+			for i := a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0; i-- {
+				a := e.Value.(*KnownAddress)
+				if isGoodAddress(a, relaxedMode) {
+					ka = a
+				}
 				e = e.Next()
 			}
-			ka := e.Value.(*KnownAddress)
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
 				log.Tracef("Selected %v from tried bucket",
@@ -840,10 +855,16 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 			var ka *KnownAddress
 			nth := a.rand.Intn(len(a.addrNew[bucket]))
 			for _, value := range a.addrNew[bucket] {
-				if nth == 0 {
+				if isGoodAddress(value, relaxedMode) {
 					ka = value
 				}
+				if nth == 0 {
+					break
+				}
 				nth--
+			}
+			if ka == nil {
+				continue
 			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {

@@ -30,6 +30,7 @@ import (
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/bloom"
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/btcutil/util/mailbox"
 	"github.com/pkt-cash/pktd/chaincfg"
 	"github.com/pkt-cash/pktd/chaincfg/chainhash"
 	"github.com/pkt-cash/pktd/connmgr"
@@ -2093,9 +2094,12 @@ func (s *server) peerHandler() {
 				// Bitcoind uses a lookup of the dns seeder here. This
 				// is rather strange since the values looked up by the
 				// DNS seed lookups will vary quite a lot.
-				// to replicate this behavior we put all addresses as
-				// having come from the first one.
-				s.addrManager.AddAddresses(addrs, addrs[0])
+				// cjd Dec 6 2023: We're switching to a "magic" address
+				//                 which will allow us to differentiate
+				//                 more trusted addresses from addresses
+				//                 coming from random nodes.
+				src := wire.NetAddress{Services: protocol.SFTrusted}
+				s.addrManager.AddAddresses(addrs, &src)
 			})
 	}
 	go s.connManager.Start()
@@ -2521,6 +2525,13 @@ func setupRPCListeners() ([]net.Listener, er.R) {
 	return listeners, nil
 }
 
+func (s *server) peerCount() int {
+	replyChan := make(chan []*serverPeer)
+	s.query <- getPeersMsg{reply: replyChan}
+	serverPeers := <-replyChan
+	return len(serverPeers)
+}
+
 // newServer returns a new pktd server configured to listen on addr for the
 // bitcoin network type specified by chainParams.  Use start to begin accepting
 // connections from peers.
@@ -2765,9 +2776,30 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 		IsCurrent:              s.syncManager.IsCurrent,
 	})
 
+	targetOutbound := defaultTargetOutbound
+	if cfg.MaxPeers < targetOutbound {
+		targetOutbound = cfg.MaxPeers
+	}
+
 	localAddrs := localaddrs.New()
+	relaxedMode := mailbox.NewMailbox(false)
 	go func() {
 		for {
+			pc := s.peerCount()
+			hasSyncPeer := s.syncManager.SyncPeer() != nil
+			enoughPeers := pc > (targetOutbound - 2)
+			if relaxedMode.Load() {
+				if !hasSyncPeer {
+					log.Infof("Lost sync peer, switch to fast peer search")
+				} else if !enoughPeers {
+					log.Infof("Only have [%d] peers, switch to fast peer search", pc)
+				}
+				relaxedMode.Store(false)
+			} else if hasSyncPeer && enoughPeers {
+				log.Infof("Found [%d] peers including sync peer, switching to relaxed peer search", pc)
+				relaxedMode.Store(true)
+			}
+
 			localAddrs.Referesh()
 			time.Sleep(time.Second * 30)
 		}
@@ -2783,7 +2815,7 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 	if !cfg.SimNet && !cfg.RegressionTest && len(cfg.ConnectPeers) == 0 {
 		newAddressFunc = func() (net.Addr, er.R) {
 			for tries := 0; tries < 100; tries++ {
-				addr := s.addrManager.GetAddress()
+				addr := s.addrManager.GetAddress(relaxedMode.Load())
 				if addr == nil {
 					break
 				}
@@ -2831,10 +2863,6 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 	}
 
 	// Create a connection manager.
-	targetOutbound := defaultTargetOutbound
-	if cfg.MaxPeers < targetOutbound {
-		targetOutbound = cfg.MaxPeers
-	}
 	cmgr, err := connmgr.New(&connmgr.Config{
 		Listeners:      listeners,
 		OnAccept:       s.inboundPeerConnected,
