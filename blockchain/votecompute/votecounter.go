@@ -102,6 +102,10 @@ func (vc *VoteCompute) compute(height int32) er.R {
 				return er.Errorf("Votedb corruption, unable to load votewinnerdb: %v", err)
 			}
 		}
+		if height == 0 && lastElectionHeight == 0 {
+			log.Debugf("VoteCompute: Height is zero and no election data, nothing to do")
+			return nil
+		}
 		if lastElectionHeight >= height {
 			// the win has been undermined by a rollback, destroy it
 			log.Debugf("VoteCompute: Rolling back winner [%d] because there was a reorg", lastElectionHeight)
