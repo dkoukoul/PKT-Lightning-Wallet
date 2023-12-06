@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkt-cash/pktd/addrmgr"
+	"github.com/pkt-cash/pktd/addrmgr/localaddrs"
 	"github.com/pkt-cash/pktd/blockchain"
 	"github.com/pkt-cash/pktd/blockchain/indexers"
 	"github.com/pkt-cash/pktd/blockchain/votecompute"
@@ -2764,6 +2765,14 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 		IsCurrent:              s.syncManager.IsCurrent,
 	})
 
+	localAddrs := localaddrs.New()
+	go func() {
+		for {
+			localAddrs.Referesh()
+			time.Sleep(time.Second * 30)
+		}
+	}()
+
 	// Only setup a function to return new addresses to connect to when
 	// not running in connect-only mode.  The simulation network is always
 	// in connect-only mode since it is only intended to connect to
@@ -2777,6 +2786,13 @@ func newServer(listenAddrs, agentBlacklist, agentWhitelist []string,
 				addr := s.addrManager.GetAddress()
 				if addr == nil {
 					break
+				}
+
+				// If for some reason, we're not able to get our local addrs (OS permissions)
+				// we'll pretend everything is ok.
+				if !localAddrs.Reachable(addr.NetAddress()) && localAddrs.IsWorking() {
+					// Unreachable address
+					continue
 				}
 
 				// Address will not be invalid, local or unroutable
