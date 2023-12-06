@@ -76,7 +76,7 @@ func PutWinner(dbTx database.Tx, effectiveHeight int32, winner []byte, voteHash 
 	}
 }
 
-func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
+func ListWinnersBeforeY(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
 	if buck, _, err := bucketAndHeight(dbTx, height); err != nil {
 		return err
 	} else {
@@ -112,12 +112,14 @@ func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byt
 	}
 }
 
-func ListWinnersBeforeX(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
+func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
 	if buck, height, err := bucketAndHeight(dbTx, height); err != nil {
 		return err
 	} else {
 		c := buck.Cursor()
-		c.Seek(height)
+		if !c.Seek(height) {
+			c.Last()
+		}
 		for {
 			if len(c.Key()) == 0 {
 				// Relevant in the first iteration when seek probably did not find the exact entry
