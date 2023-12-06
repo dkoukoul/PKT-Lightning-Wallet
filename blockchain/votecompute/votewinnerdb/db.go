@@ -81,7 +81,9 @@ func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byt
 		return err
 	} else {
 		c := buck.Cursor()
-		c.First()
+		if !c.First() {
+			return nil
+		}
 		type ent struct {
 			height int32
 			val    []byte
