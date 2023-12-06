@@ -815,9 +815,10 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 		// Tried entry.
 		large := 1 << 30
 		factor := 1.0
-		for {
-			// pick a random bucket.
-			bucket := a.rand.Intn(len(a.addrTried))
+		// pick a random bucket.
+		startBucket := a.rand.Intn(len(a.addrTried))
+		for bucketMod := startBucket; bucketMod < startBucket*2; bucketMod++ {
+			bucket := bucketMod % len(a.addrTried)
 			if a.addrTried[bucket].Len() == 0 {
 				continue
 			}
@@ -825,12 +826,15 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 			// Pick a random entry in the list
 			e := a.addrTried[bucket].Front()
 			var ka *KnownAddress
-			for i := a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0; i-- {
+			for i := a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0 || ka == nil; i-- {
 				a := e.Value.(*KnownAddress)
 				if isGoodAddress(a, relaxedMode) {
 					ka = a
 				}
 				e = e.Next()
+				if e == nil {
+					break
+				}
 			}
 			if ka == nil {
 				continue
@@ -848,9 +852,10 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 		// XXX use a closure/function to avoid repeating this.
 		large := 1 << 30
 		factor := 1.0
-		for {
-			// Pick a random bucket.
-			bucket := a.rand.Intn(len(a.addrNew))
+		// Pick a random bucket.
+		startBucket := a.rand.Intn(len(a.addrNew))
+		for bucketMod := startBucket; bucketMod < startBucket*2; bucketMod++ {
+			bucket := bucketMod % len(a.addrNew)
 			if len(a.addrNew[bucket]) == 0 {
 				continue
 			}
@@ -861,7 +866,7 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 				if isGoodAddress(value, relaxedMode) {
 					ka = value
 				}
-				if nth == 0 {
+				if nth == 0 && ka != nil {
 					break
 				}
 				nth--
@@ -878,6 +883,7 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 			factor *= 1.2
 		}
 	}
+	return nil
 }
 
 func (a *AddrManager) find(addr *wire.NetAddress) *KnownAddress {
