@@ -1185,7 +1185,7 @@ func (sp *serverPeer) OnGetAddr(_ *peer.Peer, msg *wire.MsgGetAddr) {
 	sp.sentAddrs = true
 
 	// Get the current known addresses from the address manager.
-	addrCache := sp.server.addrManager.AddressCache()
+	addrCache := sp.server.addrManager.AddressesToShare()
 
 	// Add the best addresses we have for peer discovery here - if
 	// we have a port of 0 then that means nothing good was found,
