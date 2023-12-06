@@ -2,6 +2,7 @@ package votewinnerdb
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/database"
@@ -69,6 +70,8 @@ func PutWinner(dbTx database.Tx, effectiveHeight int32, winner []byte, voteHash 
 			copy(buf[:32], voteHash)
 		}
 		copy(buf[32:], winner)
+		log.Debugf("VoteCompute: Storing entry: [%s] => [%s]",
+			hex.EncodeToString(height), hex.EncodeToString(buf))
 		return buck.Put(height, buf)
 	}
 }
