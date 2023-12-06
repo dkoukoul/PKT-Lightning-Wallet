@@ -832,6 +832,9 @@ func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 				}
 				e = e.Next()
 			}
+			if ka == nil {
+				continue
+			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
 				log.Tracef("Selected %v from tried bucket",
