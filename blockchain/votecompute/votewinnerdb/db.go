@@ -77,6 +77,37 @@ func PutWinner(dbTx database.Tx, effectiveHeight int32, winner []byte, voteHash 
 }
 
 func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
+	if buck, _, err := bucketAndHeight(dbTx, height); err != nil {
+		return err
+	} else {
+		c := buck.Cursor()
+		c.First()
+		type ent struct {
+			height int32
+			val    []byte
+		}
+		var entries []ent
+		for {
+			if h, err := decodeHeight(c.Key()); err != nil {
+				return err
+			} else if h > height {
+				break
+			} else {
+				entries = append(entries, ent{height: h, val: c.Value()})
+			}
+		}
+		log.Debugf("VoteCompute: There exist [%d] winners <= [%d]", len(entries), height)
+		for i := len(entries) - 1; i >= 0; i-- {
+			val := entries[i].val
+			if err := handler(entries[i].height, val[:32], val[32:]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+func ListWinnersBeforeX(dbTx database.Tx, height int32, handler func(int32, []byte, []byte) er.R) er.R {
 	if buck, height, err := bucketAndHeight(dbTx, height); err != nil {
 		return err
 	} else {
