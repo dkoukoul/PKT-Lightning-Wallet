@@ -88,7 +88,9 @@ func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byt
 		}
 		var entries []ent
 		for {
-			if h, err := decodeHeight(c.Key()); err != nil {
+			if len(c.Key()) == 0 {
+				break
+			} else if h, err := decodeHeight(c.Key()); err != nil {
 				return err
 			} else if h > height {
 				break
