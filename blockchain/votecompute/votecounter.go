@@ -91,6 +91,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	// 1. Load the winner for this height
 	lastElectionHeight := int32(0)
 	for {
+		log.Debugf("VoteCompute: Checking most recent winner for height [%d]", height)
 		if err := vc.db.View(func(tx database.Tx) er.R {
 			return votewinnerdb.ListWinnersBefore(tx, height, func(i int32, _, _ []byte) er.R {
 				lastElectionHeight = i
@@ -103,6 +104,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 		}
 		if lastElectionHeight >= height {
 			// the win has been undermined by a rollback, destroy it
+			log.Debugf("VoteCompute: Rolling back winner [%d] because there was a reorg", lastElectionHeight)
 			if err := vc.db.Update(func(tx database.Tx) er.R {
 				return votewinnerdb.RemoveWinner(tx, lastElectionHeight)
 			}); err != nil {
@@ -128,7 +130,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	ct := candidatetree.NewCandidateTree(limitCandidates)
 
 	// 2. Scan balances / votes to collect limitCandidates candidates
-	log.Infof("VoteCounter: Starting vote computation for height [%d]", nextElectionHeight)
+	log.Infof("VoteCompute: Starting vote computation for height [%d]", nextElectionHeight)
 	expired := 0
 	t0 := time.Now()
 	hash := blake2b.New256()
@@ -138,7 +140,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	if err := vc.scanBalances(nextElectionHeight, func(ai *db.AddressInfo) er.R {
 		i++
 		if i%10000 == 0 {
-			log.Debugf("VoteCounter: Scanning address balances and votes [%d]", i)
+			log.Debugf("VoteCompute: Scanning address balances and votes [%d]", i)
 		}
 		expired += int(ai.ExpiredCount)
 		if ai.Balance == 0 {
@@ -166,7 +168,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 
 	// 3. If we can't store all candidates, run over again to assign additional votes
 	if ct.OverLimit() {
-		log.Infof("VoteCounter: ran over limit, those with less than [%f] coins cannot candidate",
+		log.Infof("VoteCompute: ran over limit, those with less than [%f] coins cannot candidate",
 			btcutil.Amount(int64(ct.GetWorst().NumberOfVotes)).ToBTC(),
 		)
 		byId := ct.NodesById()
@@ -242,13 +244,13 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	vc.stopAtHeight.Store(nextStopAt)
 
 	timeTaken := time.Since(t0)
-	log.Infof("VoteCounter: Vote won by [%s] (found in [%s]) - [%d] expired entries",
+	log.Infof("VoteCompute: Vote won by [%s] (found in [%s]) - [%d] expired entries",
 		vc.addressPrinter(winScr), timeTaken, expired)
 
 	if expired > expiredToPrune {
 		var startFrom []byte
 		var stats db.PruneExpiredStats
-		log.Infof("VoteCounter: Database has [%d] expired entries, pruning")
+		log.Infof("VoteCompute: Database has [%d] expired entries, pruning")
 		t0 := time.Now()
 		for {
 			deadline := time.Now().Add(timeLimit)
@@ -266,7 +268,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 				break
 			}
 		}
-		log.Infof("VoteCounter: Pruned [%d] of [%d] balances and [%d] of [%d] votes. Took [%s] time.",
+		log.Infof("VoteCompute: Pruned [%d] of [%d] balances and [%d] of [%d] votes. Took [%s] time.",
 			stats.BalancesDeleted, stats.BalancesVisited, stats.VotesDeleted, stats.VotesVisited, time.Since(t0))
 	}
 	return nil
