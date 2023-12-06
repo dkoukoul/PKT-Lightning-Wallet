@@ -94,6 +94,7 @@ func (vc *VoteCompute) compute(height int32) er.R {
 		log.Debugf("VoteCompute: Checking most recent winner for height [%d]", height)
 		if err := vc.db.View(func(tx database.Tx) er.R {
 			return votewinnerdb.ListWinnersBefore(tx, height, func(i int32, _, _ []byte) er.R {
+				log.Debugf("VoteCompute: Found last election at height [%d]", i)
 				lastElectionHeight = i
 				return er.LoopBreak
 			})
@@ -134,7 +135,8 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	ct := candidatetree.NewCandidateTree(limitCandidates)
 
 	// 2. Scan balances / votes to collect limitCandidates candidates
-	log.Infof("VoteCompute: Starting vote computation for height [%d]", nextElectionHeight)
+	log.Infof("VoteCompute: Starting vote computation for height [%d] (last vote at [%d])",
+		nextElectionHeight, lastElectionHeight)
 	expired := 0
 	t0 := time.Now()
 	hash := blake2b.New256()
