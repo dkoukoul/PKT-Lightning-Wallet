@@ -83,7 +83,7 @@ func (la *LocalAddrs) Reachable(na *wire.NetAddress) bool {
 	la.m.Lock()
 	for _, localNa := range la.a {
 		if localNa != nil && addrmgr.Reachable(localNa, na) {
-			log.Infof("[%s] reachable via [%s]", na.IP.String(), localNa.IP.String())
+			log.Tracef("[%s] reachable via [%s]", na.IP.String(), localNa.IP.String())
 			out = true
 			break
 		}
