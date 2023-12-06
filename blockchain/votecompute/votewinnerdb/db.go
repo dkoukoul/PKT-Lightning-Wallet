@@ -88,14 +88,15 @@ func ListWinnersBefore(dbTx database.Tx, height int32, handler func(int32, []byt
 		}
 		var entries []ent
 		for {
-			if len(c.Key()) == 0 {
-				break
-			} else if h, err := decodeHeight(c.Key()); err != nil {
+			if h, err := decodeHeight(c.Key()); err != nil {
 				return err
 			} else if h > height {
 				break
 			} else {
 				entries = append(entries, ent{height: h, val: c.Value()})
+			}
+			if !c.Next() {
+				break
 			}
 		}
 		log.Debugf("VoteCompute: There exist [%d] winners <= [%d]", len(entries), height)
