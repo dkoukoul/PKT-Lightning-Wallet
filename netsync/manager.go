@@ -1412,7 +1412,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		// Don't relay if we are not current. Other peers that are
 		// current should already know about it.
 		if !sm.current() {
-			log.Debugf("Block acceptance notification not relayed since we are not current.")
+			// log.Debugf("Block acceptance notification not relayed since we are not current.")
 			return
 		}
 
