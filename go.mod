@@ -37,6 +37,7 @@ require (
 	github.com/onsi/gomega v1.10.3
 	github.com/sethgrid/pester v1.1.1-0.20200617174401-d2ad9ec9a8b6
 	github.com/stretchr/testify v1.7.0
+	github.com/zeebo/bencode v1.0.0
 	go.etcd.io/bbolt v1.3.6-0.20200807205753-f6be82302843
 	golang.org/x/crypto v0.13.0
 	golang.org/x/net v0.10.0
@@ -62,8 +63,6 @@ require (
 	github.com/nxadm/tail v1.4.6-0.20201001195649-edf6bc2dfc36 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/fastuuid v1.2.0 // indirect
-	github.com/zeebo/bencode v1.0.0 // indirect
-	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/term v0.12.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
