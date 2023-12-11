@@ -159,6 +159,8 @@ const (
 	// call to AddressCache()).
 	getAddrMax = 5000
 
+	getAddrMin = 20
+
 	// getAddrPercent is the percentage of total addresses known that we
 	// will share with a call to AddressCache.
 	getAddrPercent = 23
@@ -667,14 +669,39 @@ func (a *AddrManager) NeedMoreAddresses() bool {
 	return a.numAddresses() < needAddressThreshold
 }
 
+func (a *AddrManager) addressesThatOnceWorked() []*wire.NetAddress {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
+
+	count := 0
+	for _, v := range a.addrIndex {
+		if v.lastsuccess.After(time.Unix(0, 0)) {
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	addrs := make([]*wire.NetAddress, 0, count)
+	for _, v := range a.addrIndex {
+		if v.lastsuccess.After(time.Unix(0, 0)) {
+			addrs = append(addrs, v.na)
+		}
+	}
+
+	return addrs
+}
+
 // AddressCache returns the current address cache.  It must be treated as
 // read-only (but since it is a copy now, this is not as dangerous).
-func (a *AddrManager) AddressCache() []*wire.NetAddress {
-	allAddr := a.getAddresses()
+func (a *AddrManager) AddressesToShare() []*wire.NetAddress {
+	allAddr := a.addressesThatOnceWorked()
 
 	numAddresses := len(allAddr) * getAddrPercent / 100
 	if numAddresses > getAddrMax {
 		numAddresses = getAddrMax
+	} else if numAddresses < getAddrMin {
+		numAddresses = len(allAddr)
 	}
 
 	// Fisher-Yates shuffle the array. We only need to do the first

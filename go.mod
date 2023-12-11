@@ -14,6 +14,7 @@ require (
 	github.com/aead/siphash v1.0.1
 	github.com/arl/statsviz v0.2.2-0.20201115121518-5ea9f0cf1bd1
 	github.com/btcsuite/winsvc v1.0.0
+	github.com/cjdelisle/Electorium_go v0.0.0-20231004103752-531e568a992b
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/dchest/blake2b v1.0.0
 	github.com/emirpasic/gods v1.12.1-0.20200630092735-7e2349589531
@@ -37,9 +38,9 @@ require (
 	github.com/sethgrid/pester v1.1.1-0.20200617174401-d2ad9ec9a8b6
 	github.com/stretchr/testify v1.7.0
 	go.etcd.io/bbolt v1.3.6-0.20200807205753-f6be82302843
-	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897
-	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
-	golang.org/x/sys v0.0.0-20220204135822-1c1b9b1eba6a
+	golang.org/x/crypto v0.13.0
+	golang.org/x/net v0.10.0
+	golang.org/x/sys v0.12.0
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2
 	google.golang.org/grpc v1.44.0
 	google.golang.org/protobuf v1.27.1
@@ -63,6 +64,9 @@ require (
 	github.com/rogpeppe/fastuuid v1.2.0 // indirect
 	github.com/zeebo/bencode v1.0.0 // indirect
 	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
+	golang.org/x/term v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20220204002441-d6cc3cc0770e // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
