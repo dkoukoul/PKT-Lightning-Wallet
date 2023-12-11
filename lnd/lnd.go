@@ -6,6 +6,7 @@ package lnd
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,6 +21,8 @@ import (
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/chaincfg/chainhash"
+	"github.com/pkt-cash/pktd/cjdns"
+	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
 	"github.com/pkt-cash/pktd/lnd/autopilot"
 	"github.com/pkt-cash/pktd/lnd/chainreg"
 	"github.com/pkt-cash/pktd/lnd/chanacceptor"
@@ -73,7 +76,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		strings.ToTitle(cfg.registeredChains.PrimaryChain().String()),
 		network,
 	)
-
+	
 	// Bring up the REST handler immediately
 	api, apiRouter := apiv1.New()
 	restContext := RpcContext{}
@@ -420,6 +423,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	// Set up an autopilot manager from the current config. This will be
 	// used to manage the underlying autopilot agent, starting and stopping
 	// it at will.
+	log.Debugf("Starting Autopilot with %v ", cfg.Autopilot)
 	atplCfg, err := initAutoPilot(server, cfg.Autopilot, mainChain, cfg.ActiveNetParams)
 	if err != nil {
 		err := er.Errorf("unable to initialize autopilot: %v", err)
@@ -533,6 +537,20 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		return err
 	}
 	defer server.Stop()
+
+	// Once the wallet is unlocked, and lnd server is ready
+	// we can start listening for cjdns invoice requests
+	if cfg.CjdnsSocket != "" {
+		if rs := restContext.MaybeRpcServer; rs != nil {
+			cjdnsMgr, err := cjdns.NewCjdnsHandler(cfg.CjdnsSocket, api)
+			if err != nil {
+				log.Errorf("Can not initialize CJDNS: %v", err)
+			} else {
+				//Cjdns initialized
+				cjdnsMgr.Start(rs)
+			}
+		}
+	}
 
 	// Now that the server has started, if the autopilot mode is currently
 	// active, then we'll start the autopilot agent immediately. It will be
@@ -977,4 +995,29 @@ func WalletFilename(walletName string) (string, string) {
 	} else {
 		return "", fmt.Sprintf("wallet_%s.db", walletName)
 	}
+}
+
+func (rs *LightningRPCServer) LndListPeers(ctx context.Context,
+	in *rpc_pb.ListPeersRequest) (*rpc_pb.ListPeersResponse, er.R)  {
+		return rs.ListPeers(ctx, in)
+}
+
+func (rs *LightningRPCServer) LndConnectPeer(ctx context.Context,
+	in *rpc_pb.ConnectPeerRequest) (*rpc_pb.Null, er.R) {
+		return rs.ConnectPeer(ctx, in)
+}
+
+func (rs *LightningRPCServer) LndIdentityPubkey() string { 
+		return hex.EncodeToString(rs.server.identityECDH.PubKey().SerializeCompressed())
+}
+
+func (rs *LightningRPCServer) LndAddInvoice(ctx context.Context,
+	in *rpc_pb.Invoice) (*rpc_pb.AddInvoiceResponse, er.R) {
+		return rs.AddInvoice(ctx, in)
+}
+
+func (rs *LightningRPCServer) LndPeerPort() int {
+		addr := rs.cfg.Listeners[0]
+		tcpAddr, _ := addr.(*net.TCPAddr)
+		return tcpAddr.Port
 }

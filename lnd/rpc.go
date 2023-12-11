@@ -1310,6 +1310,7 @@ func (c *RpcContext) RegisterFunctions(a *apiv1.Apiv1) {
 			return rs.GenSeed0(context.TODO(), req)
 		}),
 	)
+	apiv1.DefineCategory(a, "cjdns", "Cjdns RPCs")
 }
 
 type RpcContext struct {

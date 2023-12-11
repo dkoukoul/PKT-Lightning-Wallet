@@ -14,11 +14,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/btcutil/util"
 	"github.com/pkt-cash/pktd/generated/proto/restrpc_pb/help_pb"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 func main() {
@@ -59,6 +61,34 @@ func main1() er.R {
 		}
 		isHelp = true
 		command = flag.Args()[1]
+	}
+	if command == "unlock" {
+		// see if there is a wallet file
+		walletFile := ""
+		if len(flag.Args()) >= 2 {
+			walletFile = flag.Args()[1]
+		}
+		if (walletFile != "") {
+			fmt.Printf("Enter password for %s: ", walletFile)
+		} else {
+			fmt.Print("Enter password for wallet: ")
+		}
+		password, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			fmt.Println("Error:", err)
+			return er.Errorf("error: unable to read password\n")
+		}
+		fmt.Println("")
+		requesPayload := ""
+		if (walletFile != "") {
+			if path.Ext(walletFile) == "" {
+				walletFile += ".db"
+			}
+			requesPayload = "{ \"wallet_passphrase\": \""+string(password)+"\", \"wallet_name\": \""+string(walletFile)+"\" }"
+		} else {
+			requesPayload = "{ \"wallet_passphrase\": \""+string(password)+"\" }"
+		}
+		return executeCommand(pldServer, "wallet/unlock", requesPayload)
 	}
 	help, err := getEndpointHelp(pldServer + "/api/v1/help/" + command)
 	if err != nil {

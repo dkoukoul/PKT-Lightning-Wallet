@@ -2,7 +2,6 @@ package lnrpc
 
 import (
 	"context"
-	"strings"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/chaincfg"
@@ -189,7 +188,7 @@ func (m *MetaService) CheckPassword(
 	}
 
 	publicPw := []byte(wallet.InsecurePubPassphrase)
-
+	validPassphrase := false
 	//	if wallet is locked, temporary unlock it just to check the passphrase
 	var walletAux *wallet.Wallet = m.Wallet
 	//if wallet_name not passed then try to unlock the default
@@ -257,16 +256,13 @@ func (m *MetaService) CheckPassword(
 	//	attempt to check the private passphrases for the wallet.
 	err := walletAux.CheckPassphrase(publicPw, walletPassphrase)
 	if err != nil {
-		if !strings.HasSuffix(err.Message(), "invalid passphrase for master private key") {
-			return nil, err
-		}
-
-		return &meta_pb.CheckPasswordResponse{
-			ValidPassphrase: false,
-		}, nil
+		log.Info("CheckPassphrase failed, incorect passphrase")
+	} else {
+		log.Info("CheckPassphrase success, correct passphrase")
+		validPassphrase = true
 	}
 
 	return &meta_pb.CheckPasswordResponse{
-		ValidPassphrase: true,
+		ValidPassphrase: validPassphrase,
 	}, nil
 }

@@ -1086,9 +1086,10 @@ func (r *ChannelRouter) networkHandler() {
 		// existing client.
 		case ntfnUpdate := <-r.ntfnClientUpdates:
 			clientID := ntfnUpdate.clientID
-
+			log.Debugf("New topology client %v", clientID)
 			if ntfnUpdate.cancel {
 				r.RLock()
+				log.Debugf("Cancelling topology change ntfn ")
 				client, ok := r.topologyClients[ntfnUpdate.clientID]
 				r.RUnlock()
 				if ok {

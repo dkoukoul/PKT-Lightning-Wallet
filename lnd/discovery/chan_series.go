@@ -211,19 +211,20 @@ func (c *ChanSeries) FilterKnownChanIDs(chain chainhash.Hash,
 // NOTE: This is part of the ChannelGraphTimeSeries interface.
 func (c *ChanSeries) FilterChannelRange(chain chainhash.Hash,
 	startHeight, endHeight uint32) ([]lnwire.ShortChannelID, er.R) {
-
+	log.Debugf("FilterChannelRange: %v, %v", startHeight, endHeight)
 	chansInRange, err := c.graph.FilterChannelRange(startHeight, endHeight)
 	if err != nil {
 		return nil, err
 	}
-
+	log.Debugf("FilterChannelRange: %v", chansInRange)
 	chanResp := make([]lnwire.ShortChannelID, 0, len(chansInRange))
 	for _, chanID := range chansInRange {
 		chanResp = append(
 			chanResp, lnwire.NewShortChanIDFromInt(chanID),
 		)
+		log.Debugf("FilterChannelRange: %v", chanResp)
 	}
-
+	log.Debugf("FilterChannelRange: %v", chanResp)
 	return chanResp, nil
 }
 

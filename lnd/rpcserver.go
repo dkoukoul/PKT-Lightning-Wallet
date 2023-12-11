@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -1710,7 +1711,7 @@ func (r *LightningRPCServer) GetInfo0(ctx context.Context,
 
 	idPub := r.server.identityECDH.PubKey().SerializeCompressed()
 	idPubHex := hex.EncodeToString(idPub)
-	
+
 	bs, err := r.server.cc.ChainIO.BestBlock()
 	if err != nil {
 		return nil, er.Errorf("unable to get best block info: %v", err)
@@ -3900,7 +3901,7 @@ func (r *LightningRPCServer) sendPaymentSync(ctx context.Context,
 // unique payment preimage.
 func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 	invoice *rpc_pb.Invoice) (*rpc_pb.AddInvoiceResponse, er.R) {
-
+	
 	defaultDelta := r.cfg.Bitcoin.TimeLockDelta
 	if r.cfg.registeredChains.PrimaryChain() == chainreg.LitecoinChain {
 		defaultDelta = r.cfg.Litecoin.TimeLockDelta
@@ -3918,14 +3919,14 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 			return r.server.featureMgr.Get(feature.SetInvoice)
 		},
 	}
-
+	
 	value, err := lnrpc.UnmarshallAmt(invoice.Value, invoice.ValueMsat)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert the passed routing hints to the required format.
-	routeHints, err := invoicesrpc.CreateZpay32HopHints(invoice.RouteHints)
+		routeHints, err := invoicesrpc.CreateZpay32HopHints(invoice.RouteHints)
 	if err != nil {
 		return nil, err
 	}
@@ -3939,7 +3940,7 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 		Private:         invoice.Private,
 		RouteHints:      routeHints,
 	}
-
+	
 	if invoice.RPreimage != nil {
 		preimage, err := lntypes.MakePreimage(invoice.RPreimage)
 		if err != nil {
@@ -3947,14 +3948,14 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 		}
 		addInvoiceData.Preimage = &preimage
 	}
-
+	
 	hash, dbInvoice, err := invoicesrpc.AddInvoice(
 		ctx, addInvoiceCfg, addInvoiceData,
 	)
 	if err != nil {
 		return nil, err
 	}
-
+	
 	return &rpc_pb.AddInvoiceResponse{
 		AddIndex:       dbInvoice.AddIndex,
 		PaymentRequest: string(dbInvoice.PaymentRequest),
@@ -3979,7 +3980,8 @@ func (r *LightningRPCServer) LookupInvoice(ctx context.Context,
 	if req.RHash != nil && len(req.RHash) > 0 {
 		rHash, err = util.DecodeHex(string(req.RHash))
 		if err != nil {
-			return nil, err
+			log.Info("unable to decode hex string, will take rHash as bytes: %v", err.Message())
+			rHash = req.RHash
 		}
 	} else {
 		rHash = req.RHash
@@ -4627,7 +4629,7 @@ func (r *LightningRPCServer) SubscribeChannelGraph(req *rpc_pb.GraphTopologySubs
 
 	for {
 		select {
-
+		
 		// A new update has been sent by the channel router, we'll
 		// marshal it into the form expected by the gRPC client, then
 		// send it off.
@@ -6416,3 +6418,12 @@ func (r *LightningRPCServer) DecodeRawTransaction(ctx context.Context, req *rpc_
 	}
 	return txi, nil
 }
+
+func isValidIPv6(addr string) bool {
+	pattern := `^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$`
+	match, _ := regexp.MatchString(pattern, addr)
+	return match
+}
+
+//NOTE: New RPC functions should be implemented where they are run, in the appropriate modules.
+//See GetTransactionsRequest at pktwallet/wallet/wallet.go for example

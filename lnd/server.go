@@ -95,6 +95,10 @@ const (
 	// value used or a particular peer will be chosen between 0s and this
 	// value.
 	maxInitReconnectDelay = 30
+
+	// multiAddrConnectionStagger is the number of seconds to wait between
+	// attempting to a peer with each of its advertised addresses.
+	multiAddrConnectionStagger = 10 * time.Second
 )
 
 var (
@@ -184,6 +188,7 @@ type server struct {
 
 	persistentPeers        map[string]bool
 	persistentPeersBackoff map[string]time.Duration
+	persistentPeerAddrs    map[string][]*lnwire.NetAddress
 	persistentConnReqs     map[string][]*connmgr.ConnReq
 	persistentRetryCancels map[string]chan struct{}
 
@@ -336,6 +341,7 @@ func noiseDial(idKey keychain.SingleKeyECDH,
 		return brontide.Dial(idKey, lnAddr, timeout, netCfg.Dial)
 	}
 }
+
 
 // newServer creates a new instance of the server which is to listen using the
 // passed listener address.
@@ -1518,13 +1524,14 @@ func (s *server) Start() er.R {
 				return
 			}
 		}
-
+		
 		if err := s.chanSubSwapper.Start(); err != nil {
 			startErr = err
 			return
 		}
 
 		s.connMgr.Start()
+
 
 		// With all the relevant sub-systems started, we'll now attempt
 		// to establish persistent connections to our direct channel
@@ -2138,6 +2145,8 @@ func (s *server) initialPeerBootstrap(ignore map[autopilot.NodeID]struct{},
 		// Otherwise, we'll request for the remaining number of peers
 		// in order to reach our target.
 		peersNeeded := numTargetPeers - numActivePeers
+		//print all thre above values
+		log.Debugf("PeersNeeded %d, numTargetPeers %d, numActivePeers %d", peersNeeded, numTargetPeers, numActivePeers)
 		bootstrapAddrs, err := discovery.MultiSourceBootstrap(
 			ignore, peersNeeded, bootstrappers...,
 		)

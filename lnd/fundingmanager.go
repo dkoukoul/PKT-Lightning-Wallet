@@ -92,7 +92,7 @@ var (
 	// to the value under the Bitcoin chain as default.
 	//
 	// TODO(roasbeef): add command line param to modify
-	MaxFundingAmount = MaxBtcFundingAmount
+	MaxFundingAmount = maxPktFundingAmount
 
 	// ErrFundingManagerShuttingDown is an error returned when attempting to
 	// process a funding request/message but the funding manager has already

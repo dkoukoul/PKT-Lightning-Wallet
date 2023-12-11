@@ -3517,8 +3517,9 @@ func (w *Wallet) goMainLoop() {
 		}
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	w.walletInit()
 	w.registerRpc()
+	w.walletInit()
+	
 	for {
 		rapidCycle := w.rescan()
 		rapidCycle = w.checkBlock() || rapidCycle

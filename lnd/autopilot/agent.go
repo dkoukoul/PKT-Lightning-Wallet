@@ -287,6 +287,7 @@ func (a *Agent) OnBalanceChange() {
 // OnNodeUpdates is a callback that should be executed each time our channel
 // graph has new nodes or their node announcements are updated.
 func (a *Agent) OnNodeUpdates() {
+	log.Debug("Node updates received!!!")
 	select {
 	case a.nodeUpdates <- &nodeUpdates{}:
 	default:
@@ -404,7 +405,7 @@ func mergeChanState(pendingChans map[NodeID]LocalChannel,
 // backing Lightning Node.
 func (a *Agent) controller() {
 	defer a.wg.Done()
-
+	
 	// We'll start off by assigning our starting balance, and injecting
 	// that amount as an initial wake up to the main controller goroutine.
 	a.OnBalanceChange()
@@ -468,6 +469,7 @@ func (a *Agent) controller() {
 		// A new channel has been opened by the agent or an external
 		// subsystem, but is still pending confirmation.
 		case <-a.pendingOpenUpdates:
+			log.Debugf("Pending channel open update received")
 			updateBalance()
 
 		// The balance of the backing wallet has changed, if more funds
@@ -514,10 +516,11 @@ func (a *Agent) controller() {
 		// factor in our set of unconfirmed channels.
 		a.chanStateMtx.Lock()
 		a.pendingMtx.Lock()
+		log.Debugf("Active channels: %v", a.chanState)
 		totalChans := mergeChanState(a.pendingOpens, a.chanState)
 		a.pendingMtx.Unlock()
 		a.chanStateMtx.Unlock()
-
+		log.Debugf("Total channels: %v", totalChans)
 		// Now that we've updated our internal state, we'll consult our
 		// channel attachment heuristic to determine if we can open
 		// up any additional channels while staying within our
@@ -525,6 +528,7 @@ func (a *Agent) controller() {
 		availableFunds, numChans := a.cfg.Constraints.ChannelBudget(
 			totalChans, a.totalBalance,
 		)
+		log.Debugf("Available num_chans=%v", numChans)
 		switch {
 		case numChans == 0:
 			continue
@@ -551,8 +555,11 @@ func (a *Agent) controller() {
 // attempts to open channels to them.
 func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 	totalChans []LocalChannel) er.R {
-
-	// As channel size we'll use the maximum channel size available.
+	log.Debugf("Attempting to open channels, %v ", totalChans)
+	
+	log.Debugf("Available funds: %v", availableFunds)
+	log.Debugf("Contraints:", a.cfg.Constraints)
+	// As cannel size we'll use the maximum channel size available.
 	chanSize := a.cfg.Constraints.MaxChanSize()
 	if availableFunds < chanSize {
 		chanSize = availableFunds
@@ -568,6 +575,8 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 	// duplicate edges.
 	a.chanStateMtx.Lock()
 	connectedNodes := a.chanState.ConnectedNodes()
+	log.Debugf("Connected nodes: %v", connectedNodes)
+	log.Debugf("Channel state: %v", a.chanState)
 	a.chanStateMtx.Unlock()
 
 	for nID := range connectedNodes {
@@ -589,7 +598,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 	}
 
 	nodesToSkip := mergeNodeMaps(a.pendingOpens,
-		a.pendingConns, connectedNodes, a.failedNodes,
+	a.pendingConns, connectedNodes, a.failedNodes,
 	)
 
 	a.pendingMtx.Unlock()
@@ -601,7 +610,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 	addresses := make(map[NodeID][]net.Addr)
 	if err := a.cfg.Graph.ForEachNode(func(node Node) er.R {
 		nID := NodeID(node.PubKey())
-
+		log.Debugf("Examining node %x", nID[:])
 		// If we come across ourselves, them we'll continue in
 		// order to avoid attempting to make a channel with
 		// ourselves.
@@ -614,8 +623,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 		// so we'll skip it.
 		addrs := node.Addrs()
 		if len(addrs) == 0 {
-			log.Tracef("Skipping node %x since no addresses known",
-				nID[:])
+			log.Tracef("Skipping node %x since no addresses known",nID[:])
 			return nil
 		}
 		addresses[nID] = addrs
@@ -623,7 +631,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 		// Additionally, if this node is in the blacklist, then
 		// we'll skip it.
 		if _, ok := nodesToSkip[nID]; ok {
-			log.Tracef("Skipping blacklisted node %x", nID[:])
+		log.Tracef("Skipping blacklisted node %x", nID[:])
 			return nil
 		}
 
@@ -632,7 +640,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 	}); err != nil {
 		return er.Errorf("unable to get graph nodes: %v", err)
 	}
-
+	log.Debugf("Found %d eligible nodes", len(nodes))
 	// Use the heuristic to calculate a score for each node in the
 	// graph.
 	log.Debugf("Scoring %d nodes for chan_size=%v", len(nodes), chanSize)
@@ -717,7 +725,7 @@ func (a *Agent) openChans(availableFunds btcutil.Amount, numChans uint32,
 		a.pendingConns[nodeID] = struct{}{}
 
 		a.wg.Add(1)
-		go a.executeDirective(*chanCandidate)
+				go a.executeDirective(*chanCandidate)
 	}
 	return nil
 }
@@ -840,7 +848,7 @@ func (a *Agent) executeDirective(directive AttachmentDirective) {
 	if err != nil {
 		log.Warnf("Unable to open channel to %x of %v: %v",
 			pub.SerializeCompressed(), directive.ChanAmt, err)
-
+		
 		// As the attempt failed, we'll clear the peer from the set of
 		// pending opens and mark them as failed so we don't attempt to
 		// open a channel to them again.

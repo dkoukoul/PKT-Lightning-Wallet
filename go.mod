@@ -61,6 +61,7 @@ require (
 	github.com/nxadm/tail v1.4.6-0.20201001195649-edf6bc2dfc36 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/fastuuid v1.2.0 // indirect
+	github.com/zeebo/bencode v1.0.0 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20220204002441-d6cc3cc0770e // indirect

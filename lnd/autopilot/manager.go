@@ -100,15 +100,17 @@ func (m *Manager) IsActive() bool {
 func (m *Manager) StartAgent() er.R {
 	m.Lock()
 	defer m.Unlock()
-
+	log.Debugf("Starting autopilot agent")
 	// Already active.
 	if m.pilot != nil {
+		log.Debugf("Autopilot agent already active")
 		return nil
 	}
 
 	// Next, we'll fetch the current state of open channels from the
 	// database to use as initial state for the auto-pilot agent.
 	initialChanState, err := m.cfg.ChannelState()
+	log.Debugf("Got initial channel state")
 	if err != nil {
 		return err
 	}
@@ -128,11 +130,13 @@ func (m *Manager) StartAgent() er.R {
 	// transactions that modify the wallet's balance, and also any graph
 	// topology updates.
 	txnSubscription, err := m.cfg.SubscribeTransactions()
+	log.Debugf("Subscribed to transaction changes")
 	if err != nil {
 		pilot.Stop()
 		return err
 	}
 	graphSubscription, err := m.cfg.SubscribeTopology()
+	log.Debugf("Subscribed to topology changes")
 	if err != nil {
 		txnSubscription.Cancel()
 		pilot.Stop()
@@ -178,8 +182,10 @@ func (m *Manager) StartAgent() er.R {
 		defer m.wg.Done()
 
 		for {
+			log.Debugf("Waiting for topology changes")
 			select {
 			case topChange, ok := <-graphSubscription.TopologyChanges:
+				log.Debugf("Got topology change")
 				// If the router is shutting down, then we will
 				// as well.
 				if !ok {
@@ -187,6 +193,7 @@ func (m *Manager) StartAgent() er.R {
 				}
 
 				for _, edgeUpdate := range topChange.ChannelEdgeUpdates {
+					log.Debugf("Got channel update")
 					// If this isn't an advertisement by
 					// the backing lnd node, then we'll
 					// continue as we only want to add
@@ -226,6 +233,7 @@ func (m *Manager) StartAgent() er.R {
 				// If new nodes were added to the graph, or nod
 				// information has changed, we'll poke autopilot
 				// to see if it can make use of them.
+				log.Debugf("Got node updates from router")
 				if len(topChange.NodeUpdates) > 0 {
 					pilot.OnNodeUpdates()
 				}

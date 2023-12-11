@@ -2,6 +2,7 @@ package autopilot
 
 import (
 	"github.com/pkt-cash/pktd/btcutil"
+	"github.com/pkt-cash/pktd/pktlog/log"
 )
 
 // AgentConstraints is an interface the agent will query to determine what
@@ -84,7 +85,8 @@ func NewConstraints(minChanSize, maxChanSize btcutil.Amount, chanLimit,
 // Note: part of the AgentConstraints interface.
 func (h *agentConstraints) ChannelBudget(channels []LocalChannel,
 	funds btcutil.Amount) (btcutil.Amount, uint32) {
-
+	// Print all information
+	log.Debugf("ChannelBudget: channels: %v, funds: %v, minChanSize: %v, maxChanSize: %v, chanLimit: %v, allocation: %v, maxPendingOpens: %v", channels, funds, h.minChanSize, h.maxChanSize, h.chanLimit, h.allocation, h.maxPendingOpens)
 	// If we're already over our maximum allowed number of channels, then
 	// we'll instruct the controller not to create any more channels.
 	if len(channels) >= int(h.chanLimit) {

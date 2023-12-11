@@ -219,8 +219,8 @@ type Config struct {
 	Color                         string        `long:"color" description:"The color of the node in hex format (i.e. '#3399FF'). Used to customize node appearance in intelligence services"`
 	MinChanSize                   int64         `long:"minchansize" description:"The smallest channel size (in satoshis) that we should accept. Incoming channels smaller than this will be rejected"`
 	MaxChanSize                   int64         `long:"maxchansize" description:"The largest channel size (in satoshis) that we should accept. Incoming channels larger than this will be rejected"`
-
-	DefaultRemoteMaxHtlcs uint16 `long:"default-remote-max-htlcs" description:"The default max_htlc applied when opening or accepting channels. This value limits the number of concurrent HTLCs that the remote party can add to the commitment. The maximum possible value is 483."`
+	MaxPktFundingAmount           int64         `long:"maxpktfundingamount" description:"The largest funding for a channel (in satoshis) that we should accept."`
+	DefaultRemoteMaxHtlcs         uint16        `long:"default-remote-max-htlcs" description:"The default max_htlc applied when opening or accepting channels. This value limits the number of concurrent HTLCs that the remote party can add to the commitment. The maximum possible value is 483."`
 
 	NumGraphSyncPeers      int           `long:"numgraphsyncpeers" description:"The number of peers that we should receive new graph updates from. This option can be tuned to save bandwidth for light clients or routing nodes."`
 	HistoricalSyncInterval time.Duration `long:"historicalsyncinterval" description:"The polling interval between historical graph sync attempts. Each historical graph sync attempt ensures we reconcile with the remote peer's graph from the genesis block."`
@@ -269,6 +269,8 @@ type Config struct {
 
 	DB *lncfg.DB `group:"db" namespace:"db"`
 
+	CjdnsSocket string `long:"cjdnssocket" description:"The path of the CJDNS socket (cjdroute.sock)"`
+
 	// registeredChains keeps track of all chains that have been registered
 	// with the daemon.
 	registeredChains *chainreg.ChainRegistry
@@ -284,6 +286,7 @@ type Config struct {
 
 // DefaultConfig returns all default values for the Config struct.
 func DefaultConfig() Config {
+	maxPktFundingAmount := btcutil.Amount(1 << 30 * 10000000)
 	return Config{
 		LndDir:     DefaultLndDir,
 		PktDir:     defaultPktWalletDir,
@@ -350,6 +353,7 @@ func DefaultConfig() Config {
 		Color:                         defaultColor,
 		MinChanSize:                   int64(minChanFundingSize),
 		MaxChanSize:                   int64(0),
+		MaxPktFundingAmount:           int64(maxPktFundingAmount),
 		DefaultRemoteMaxHtlcs:         defaultRemoteMaxHtlcs,
 		NumGraphSyncPeers:             defaultMinPeers,
 		HistoricalSyncInterval:        discovery.DefaultHistoricalSyncInterval,
@@ -400,10 +404,10 @@ func DefaultConfig() Config {
 // line options.
 //
 // The configuration proceeds as follows:
-// 	1) Start with a default config with sane settings
-// 	2) Pre-parse the command line to check for an alternative config file
-// 	3) Load configuration file overwriting defaults with any specified options
-// 	4) Parse CLI options and overwrite/add any specified options
+//  1. Start with a default config with sane settings
+//  2. Pre-parse the command line to check for an alternative config file
+//  3. Load configuration file overwriting defaults with any specified options
+//  4. Parse CLI options and overwrite/add any specified options
 func LoadConfig() (*Config, er.R) {
 	// Pre-parse the command line options to pick up an alternative config
 	// file.
@@ -438,17 +442,14 @@ func LoadConfig() (*Config, er.R) {
 	// Next, load any additional configuration options from the file.
 	var configFileError error
 	cfg := preCfg
-	if err := flags.IniParse(configFilePath, &cfg); err != nil {
-		// If it's a parsing related error, then we'll return
-		// immediately, otherwise we can proceed as possibly the config
-		// file doesn't exist which is OK.
-		if _, ok := err.(*flags.IniError); ok {
-			return nil, er.E(err)
+
+	parser := flags.NewParser(&cfg, flags.Default)
+	errr := flags.NewIniParser(parser).ParseFile(configFilePath)
+	if errr != nil {
+		if _, ok := errr.(*os.PathError); !ok {
+			return nil, er.E(errr)
 		}
-
-		configFileError = err
 	}
-
 	// Finally, parse the remaining command line options again to ensure
 	// they take precedence.
 	if _, err := flags.Parse(&cfg); err != nil {
@@ -609,12 +610,12 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, er.R) {
 
 	// Ensure that the specified values for the min and max channel size
 	// are within the bounds of the normal chan size constraints.
-	if cfg.Autopilot.MinChannelSize < int64(minChanFundingSize) {
-		cfg.Autopilot.MinChannelSize = int64(minChanFundingSize)
-	}
-	if cfg.Autopilot.MaxChannelSize > int64(MaxFundingAmount) {
-		cfg.Autopilot.MaxChannelSize = int64(MaxFundingAmount)
-	}
+	// if cfg.Autopilot.MinChannelSize < int64(minChanFundingSize) {
+	// 	cfg.Autopilot.MinChannelSize = int64(minChanFundingSize)
+	// }
+	// if cfg.Autopilot.MaxChannelSize > int64(MaxFundingAmount) {
+	// 	cfg.Autopilot.MaxChannelSize = int64(MaxFundingAmount)
+	// }
 
 	if _, err := validateAtplCfg(cfg.Autopilot); err != nil {
 		return nil, err
@@ -643,8 +644,8 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, er.R) {
 	}
 
 	// Don't allow superflous --maxchansize greater than
-	// BOLT 02 soft-limit for non-wumbo channel
-	if !cfg.ProtocolOptions.Wumbo() && cfg.MaxChanSize > int64(MaxFundingAmount) {
+	// MaxPktFundingAmount set in the config.
+	if !cfg.ProtocolOptions.Wumbo() && cfg.MaxChanSize > int64(cfg.MaxPktFundingAmount) {
 		return nil, er.Errorf("invalid channel size parameters: "+
 			"maximum channel size %v is greater than maximum non-wumbo"+
 			" channel size %v",
@@ -931,12 +932,12 @@ func ValidateConfig(cfg Config, usageMessage string) (*Config, er.R) {
 
 	// Ensure that the specified values for the min and max channel size
 	// don't are within the bounds of the normal chan size constraints.
-	if cfg.Autopilot.MinChannelSize < int64(minChanFundingSize) {
-		cfg.Autopilot.MinChannelSize = int64(minChanFundingSize)
-	}
-	if cfg.Autopilot.MaxChannelSize > int64(MaxFundingAmount) {
-		cfg.Autopilot.MaxChannelSize = int64(MaxFundingAmount)
-	}
+	// if cfg.Autopilot.MinChannelSize < int64(minChanFundingSize) {
+	// 	cfg.Autopilot.MinChannelSize = int64(minChanFundingSize)
+	// }
+	// if cfg.Autopilot.MaxChannelSize > int64(MaxFundingAmount) {
+	// 	cfg.Autopilot.MaxChannelSize = int64(MaxFundingAmount)
+	// }
 
 	// Validate profile port number.
 	if cfg.Profile != "" {

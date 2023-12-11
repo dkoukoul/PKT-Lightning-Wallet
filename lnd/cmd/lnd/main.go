@@ -8,6 +8,7 @@ import (
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/lnd"
 	"github.com/pkt-cash/pktd/lnd/signal"
+	"github.com/pkt-cash/pktd/pktlog/log"
 )
 
 func main() {
@@ -34,6 +35,7 @@ func main() {
 
 	// Call the "real" main in a nested manner so the defers will properly
 	// be executed in the case of a graceful shutdown.
+	log.Debugf("starting main lnd with: ", loadedConfig.Autopilot)
 	if err := lnd.Main(loadedConfig, signal.ShutdownChannel()); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

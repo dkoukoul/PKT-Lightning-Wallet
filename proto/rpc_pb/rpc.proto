@@ -4354,3 +4354,18 @@ message SendTxUpdate {
     // This will be empty for all event types except for REJECTED, when it will explain why
     string detail = 4;
 }
+message CjdnsPingRequest {
+    string cjdns_addr = 1;
+}
+message CjdnsPingResponse {
+    string pong = 1;
+}
+message CjdnsPaymentInvoiceRequest {
+    string cjdns_addr = 1;
+    string cjdns_pubkey = 2;
+    uint64 amount = 3;
+}
+message CjdnsPaymentInvoiceResponse {
+    bytes r_hash = 1;
+    string payment_request = 2;
+}

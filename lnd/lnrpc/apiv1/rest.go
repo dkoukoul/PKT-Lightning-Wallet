@@ -92,7 +92,6 @@ func unmarshal(r *http.Request, m proto.Message, isJson bool) er.R {
 		if b, err := ioutil.ReadAll(r.Body); err != nil {
 			return er.E(err)
 		} else {
-			log.Infof("Unmarshal: [%s] to [%#T]", string(b), m)
 			if err := protojson.Unmarshal(b, m); err != nil {
 				return er.E(err)
 			}
@@ -113,7 +112,7 @@ func marshal(w http.ResponseWriter, m proto.Message, isJson bool) er.R {
 	if isJson {
 		marshaler := protojson.MarshalOptions{
 			Multiline:       true,
-			EmitUnpopulated: false,
+			EmitUnpopulated: true,
 			UseEnumNumbers:  false,
 			Indent:          "\t",
 		}
