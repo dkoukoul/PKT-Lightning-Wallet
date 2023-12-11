@@ -281,10 +281,7 @@ func main() {
 		setEnv(k, v)
 	}
 
-	build("pktd", ".", &conf)
-	build("pktwallet", "./pktwallet", &conf)
-	build("pktctl", "./cmd/pktctl", &conf)
 	build("pld", "./lnd/cmd/lnd", &conf)
 	build("pldctl", "./lnd/cmd/lndcli", &conf)
-	fmt.Println("Everything looks good, type `./bin/pktwallet --create` to make a wallet")
+	fmt.Println("Everything looks good, type `./bin/pld --create` to make a wallet")
 }

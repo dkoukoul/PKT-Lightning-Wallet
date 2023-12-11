@@ -498,23 +498,6 @@ func dbFetchSpendJournalEntry(dbTx database.Tx, block *btcutil.Block) ([]SpentTx
 	return stxos, nil
 }
 
-// dbPutSpendJournalEntry uses an existing database transaction to update the
-// spend journal entry for the given block hash using the provided slice of
-// spent txouts.   The spent txouts slice must contain an entry for every txout
-// the transactions in the block spend in the order they are spent.
-func dbPutSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash, stxos []SpentTxOut) er.R {
-	spendBucket := dbTx.Metadata().Bucket(spendJournalBucketName)
-	serialized := serializeSpendJournalEntry(stxos)
-	return spendBucket.Put(blockHash[:], serialized)
-}
-
-// dbRemoveSpendJournalEntry uses an existing database transaction to remove the
-// spend journal entry for the passed block hash.
-func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) er.R {
-	spendBucket := dbTx.Metadata().Bucket(spendJournalBucketName)
-	return spendBucket.Delete(blockHash[:])
-}
-
 // -----------------------------------------------------------------------------
 // The unspent transaction output (utxo) set consists of an entry for each
 // unspent output using a format that is optimized to reduce space using domain
@@ -714,38 +697,6 @@ func deserializeUtxoEntry(serialized []byte) (*UtxoEntry, er.R) {
 	return entry, nil
 }
 
-// dbFetchUtxoEntryByHash attempts to find and fetch a utxo for the given hash.
-// It uses a cursor and seek to try and do this as efficiently as possible.
-//
-// When there are no entries for the provided hash, nil will be returned for the
-// both the entry and the error.
-func dbFetchUtxoEntryByHash(dbTx database.Tx, hash *chainhash.Hash) (*UtxoEntry, er.R) {
-	// Attempt to find an entry by seeking for the hash along with a zero
-	// index.  Due to the fact the keys are serialized as <hash><index>,
-	// where the index uses an MSB encoding, if there are any entries for
-	// the hash at all, one will be found.
-	cursor := dbTx.Metadata().Bucket(utxoSetBucketName).Cursor()
-	key := outpointKey(wire.OutPoint{Hash: *hash, Index: 0})
-	ok := cursor.Seek(*key)
-	recycleOutpointKey(key)
-	if !ok {
-		return nil, nil
-	}
-
-	// An entry was found, but it could just be an entry with the next
-	// highest hash after the requested one, so make sure the hashes
-	// actually match.
-	cursorKey := cursor.Key()
-	if len(cursorKey) < chainhash.HashSize {
-		return nil, nil
-	}
-	if !bytes.Equal(hash[:], cursorKey[:chainhash.HashSize]) {
-		return nil, nil
-	}
-
-	return deserializeUtxoEntry(cursor.Value())
-}
-
 // dbFetchUtxoEntry uses an existing database transaction to fetch the specified
 // transaction output from the utxo set.
 //
@@ -785,49 +736,6 @@ func dbFetchUtxoEntry(dbTx database.Tx, outpoint wire.OutPoint) (*UtxoEntry, er.
 	return entry, nil
 }
 
-// dbPutUtxoView uses an existing database transaction to update the utxo set
-// in the database based on the provided utxo view contents and state.  In
-// particular, only the entries that have been marked as modified are written
-// to the database.
-func dbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) er.R {
-	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
-	for outpoint, entry := range view.entries {
-		// No need to update the database if the entry was not modified.
-		if entry == nil || !entry.isModified() {
-			continue
-		}
-
-		// Remove the utxo entry if it is spent.
-		if entry.IsSpent() {
-			key := outpointKey(outpoint)
-			err := utxoBucket.Delete(*key)
-			recycleOutpointKey(key)
-			if err != nil {
-				return err
-			}
-
-			continue
-		}
-
-		// Serialize and store the utxo entry.
-		serialized, err := serializeUtxoEntry(entry)
-		if err != nil {
-			return err
-		}
-		key := outpointKey(outpoint)
-		err = utxoBucket.Put(*key, serialized)
-		// NOTE: The key is intentionally not recycled here since the
-		// database interface contract prohibits modifications.  It will
-		// be garbage collected normally when the database is done with
-		// it.
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // -----------------------------------------------------------------------------
 // The block index consists of two buckets with an entry for every block in the
 // main chain.  One bucket is for the hash to height mapping and the other is
@@ -864,24 +772,6 @@ func dbPutBlockIndex(dbTx database.Tx, hash *chainhash.Hash, height int32) er.R 
 	// Add the block height to hash mapping to the index.
 	heightIndex := meta.Bucket(heightIndexBucketName)
 	return heightIndex.Put(serializedHeight[:], hash[:])
-}
-
-// dbRemoveBlockIndex uses an existing database transaction remove block index
-// entries from the hash to height and height to hash mappings for the provided
-// values.
-func dbRemoveBlockIndex(dbTx database.Tx, hash *chainhash.Hash, height int32) er.R {
-	// Remove the block hash to height mapping.
-	meta := dbTx.Metadata()
-	hashIndex := meta.Bucket(hashIndexBucketName)
-	if err := hashIndex.Delete(hash[:]); err != nil {
-		return err
-	}
-
-	// Remove the block height to hash mapping.
-	var serializedHeight [4]byte
-	byteOrder.PutUint32(serializedHeight[:], uint32(height))
-	heightIndex := meta.Bucket(heightIndexBucketName)
-	return heightIndex.Delete(serializedHeight[:])
 }
 
 // dbFetchHeightByHash uses an existing database transaction to retrieve the
