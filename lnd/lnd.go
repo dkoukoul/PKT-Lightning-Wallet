@@ -640,11 +640,7 @@ func waitForWalletPassword(
 	restContext.MaybeWalletUnlocker = pwService
 
 	// Wait for user to provide the password.
-	log.Infof("Waiting for wallet (" + walletFilename + ") encryption password. " +
-		"See `./bin/pldctl help wallet/create` " +
-		"to create a wallet, or `./bin/pldctl help wallet/unlock` " +
-		"to unlock an existing wallet, or `./bin/pldctl help wallet/changepassword` to change the " +
-		"password of an existing wallet and unlock it.")
+	log.Infof("\n\nWaiting for: `./bin/pldctl unlock` to complete lightning startup\n\n")
 
 	// We currently don't distinguish between getting a password to be used
 	// for creation or unlocking, as a new wallet db will be created if
