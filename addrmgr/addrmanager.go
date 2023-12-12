@@ -785,11 +785,23 @@ func NetAddressKey(na *wire.NetAddress) string {
 	return net.JoinHostPort(ipString(na), port)
 }
 
+func isGoodAddress(a *KnownAddress, relaxedMode bool) bool {
+	if relaxedMode {
+		return true
+	} else if a.srcAddr.Services&protocol.SFTrusted == protocol.SFTrusted {
+		return true
+	} else if a.lastsuccess.After(time.Unix(0, 0)) {
+		return true
+	} else {
+		return false
+	}
+}
+
 // GetAddress returns a single address that should be routable.  It picks a
 // random one from the possible addresses with preference given to ones that
 // have not been used recently and should not pick 'close' addresses
 // consecutively.
-func (a *AddrManager) GetAddress() *KnownAddress {
+func (a *AddrManager) GetAddress(relaxedMode bool) *KnownAddress {
 	// Protect concurrent access.
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
@@ -803,20 +815,30 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 		// Tried entry.
 		large := 1 << 30
 		factor := 1.0
-		for {
-			// pick a random bucket.
-			bucket := a.rand.Intn(len(a.addrTried))
+		// pick a random bucket.
+		startBucket := a.rand.Intn(len(a.addrTried))
+		for bucketMod := startBucket; bucketMod < startBucket*2; bucketMod++ {
+			bucket := bucketMod % len(a.addrTried)
 			if a.addrTried[bucket].Len() == 0 {
 				continue
 			}
 
 			// Pick a random entry in the list
 			e := a.addrTried[bucket].Front()
-			for i :=
-				a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0; i-- {
+			var ka *KnownAddress
+			for i := a.rand.Int63n(int64(a.addrTried[bucket].Len())); i > 0 || ka == nil; i-- {
+				a := e.Value.(*KnownAddress)
+				if isGoodAddress(a, relaxedMode) {
+					ka = a
+				}
 				e = e.Next()
+				if e == nil {
+					break
+				}
 			}
-			ka := e.Value.(*KnownAddress)
+			if ka == nil {
+				continue
+			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
 				log.Tracef("Selected %v from tried bucket",
@@ -830,9 +852,10 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 		// XXX use a closure/function to avoid repeating this.
 		large := 1 << 30
 		factor := 1.0
-		for {
-			// Pick a random bucket.
-			bucket := a.rand.Intn(len(a.addrNew))
+		// Pick a random bucket.
+		startBucket := a.rand.Intn(len(a.addrNew))
+		for bucketMod := startBucket; bucketMod < startBucket*2; bucketMod++ {
+			bucket := bucketMod % len(a.addrNew)
 			if len(a.addrNew[bucket]) == 0 {
 				continue
 			}
@@ -840,10 +863,16 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 			var ka *KnownAddress
 			nth := a.rand.Intn(len(a.addrNew[bucket]))
 			for _, value := range a.addrNew[bucket] {
-				if nth == 0 {
+				if isGoodAddress(value, relaxedMode) {
 					ka = value
 				}
+				if nth == 0 && ka != nil {
+					break
+				}
 				nth--
+			}
+			if ka == nil {
+				continue
 			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
@@ -854,6 +883,7 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 			factor *= 1.2
 		}
 	}
+	return nil
 }
 
 func (a *AddrManager) find(addr *wire.NetAddress) *KnownAddress {

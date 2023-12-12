@@ -91,10 +91,10 @@ func (vc *VoteCompute) compute(height int32) er.R {
 	// 1. Load the winner for this height
 	lastElectionHeight := int32(0)
 	for {
-		log.Debugf("VoteCompute: Checking most recent winner for height [%d]", height)
+		// log.Debugf("VoteCompute: Checking most recent winner for height [%d]", height)
 		if err := vc.db.View(func(tx database.Tx) er.R {
 			return votewinnerdb.ListWinnersBefore(tx, height, func(i int32, _, _ []byte) er.R {
-				log.Debugf("VoteCompute: Found last election at height [%d]", i)
+				// log.Debugf("VoteCompute: Found last election at height [%d]", i)
 				lastElectionHeight = i
 				return er.LoopBreak
 			})
