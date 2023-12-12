@@ -609,10 +609,12 @@ func (n *NetworkHarness) DisconnectNodes(ctx context.Context, a, b *HarnessNode)
 	if errr != nil {
 		return er.E(errr)
 	}
-
-	req := &rpc_pb.DisconnectPeerRequest{
-		PubKey: bobInfo.IdentityPubkey,
+	bobKey, errr := hex.DecodeString(bobInfo.IdentityPubkey)
+	if errr != nil {
+		return er.E(errr)
 	}
+
+	req := &rpc_pb.DisconnectPeerRequest{PubKey: bobKey}
 
 	if _, errr := a.DisconnectPeer(ctx, req); errr != nil {
 		return er.E(errr)
