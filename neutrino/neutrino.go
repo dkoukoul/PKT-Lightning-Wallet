@@ -724,8 +724,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 		banMgr:            *banmgr.New(&bmConfig),
 		knownTxns:         lock.NewGenMutex(make(map[string]time.Time), "ChainService.knownTxns"),
 		TxListener:        event.NewEmitter[wire.MsgTx]("ChainService.TxListener"),
-		sts: sendtxstatus.RegisterNew(apiv1.DefineCategory(napi, "sending",
-			"Status of transactions which are being sent out to the network")),
+		sts:               sendtxstatus.RegisterNew(napi),
 	}
 
 	s.dialer = func(na net.Addr) (net.Conn, er.R) {

@@ -3,7 +3,6 @@ package lnd
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -12,14 +11,12 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkt-cash/pktd/blockchain"
 	"github.com/pkt-cash/pktd/btcec"
-	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/btcutil/psbt"
@@ -36,7 +33,6 @@ import (
 	"github.com/pkt-cash/pktd/lnd/channeldb/kvdb"
 	"github.com/pkt-cash/pktd/lnd/channelnotifier"
 	"github.com/pkt-cash/pktd/lnd/contractcourt"
-	"github.com/pkt-cash/pktd/lnd/describetxn"
 	"github.com/pkt-cash/pktd/lnd/discovery"
 	"github.com/pkt-cash/pktd/lnd/feature"
 	"github.com/pkt-cash/pktd/lnd/htlcswitch"
@@ -51,7 +47,6 @@ import (
 	"github.com/pkt-cash/pktd/lnd/lnrpc/routerrpc"
 	"github.com/pkt-cash/pktd/lnd/lntypes"
 	"github.com/pkt-cash/pktd/lnd/lnwallet"
-	"github.com/pkt-cash/pktd/lnd/lnwallet/btcwallet"
 	"github.com/pkt-cash/pktd/lnd/lnwallet/chainfee"
 	"github.com/pkt-cash/pktd/lnd/lnwallet/chancloser"
 	"github.com/pkt-cash/pktd/lnd/lnwallet/chanfunding"
@@ -68,13 +63,9 @@ import (
 	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/waddrmgr"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
-	"github.com/pkt-cash/pktd/pktwallet/wallet/seedwords"
 	"github.com/pkt-cash/pktd/pktwallet/wallet/txauthor"
-	"github.com/pkt-cash/pktd/pktwallet/wallet/txrules"
-	"github.com/pkt-cash/pktd/pktwallet/walletdb"
 	"github.com/pkt-cash/pktd/txscript"
 	"github.com/pkt-cash/pktd/wire"
-	"github.com/pkt-cash/pktd/wire/ruleerror"
 )
 
 type LightningRPCServer struct {
@@ -657,45 +648,6 @@ func (r *LightningRPCServer) NewAddress(ctx context.Context,
 
 	log.Debugf("[newaddress] type=%v addr=%v", in.Type, addr.String())
 	return &rpc_pb.NewAddressResponse{Address: addr.String()}, nil
-}
-
-var (
-	// signedMsgPrefix is a special prefix that we'll prepend to any
-	// messages we sign/verify. We do this to ensure that we don't
-	// accidentally sign a sighash, or other sensitive material. By
-	// prepending this fragment, we mind message signing to our particular
-	// context.
-	signedMsgPrefix = []byte("Lightning Signed Message:")
-)
-
-// SignMessage signs a message with the resident node's private key. The
-// returned signature string is zbase32 encoded and pubkey recoverable, meaning
-// that only the message digest and signature are needed for verification.
-func (r *LightningRPCServer) SignMessage(ctx context.Context,
-	in *rpc_pb.SignMessageRequest) (*rpc_pb.SignMessageResponse, er.R) {
-
-	//	make sure request have a non empty MsgBin or Msg
-	if (in.MsgBin == nil || len(in.MsgBin) == 0) && len(in.Msg) == 0 {
-		return nil, er.Errorf("need a message to sign")
-	}
-
-	//	if request have both MsgBin and Msg, sign only MsgBin
-	var msg []byte
-
-	if in.MsgBin != nil && len(in.MsgBin) > 0 {
-		msg = in.MsgBin
-	} else {
-		msg = []byte(in.Msg)
-	}
-
-	msg = append(signedMsgPrefix, msg...)
-	src, err := r.server.nodeSigner.SignCompact(msg)
-	if err != nil {
-		return nil, err
-	}
-	sigBytes := base64.StdEncoding.EncodeToString(src)
-
-	return &rpc_pb.SignMessageResponse{Signature: sigBytes}, nil
 }
 
 // ConnectPeer attempts to establish a connection to a remote peer.
@@ -2017,34 +1969,6 @@ func (r *LightningRPCServer) WalletBalance(ctx context.Context,
 		ConfirmedBalance:   int64(confirmedBal),
 		UnconfirmedBalance: int64(unconfirmedBal),
 	}, nil
-}
-
-func (r *LightningRPCServer) GetAddressBalances(
-	ctx context.Context,
-	in *rpc_pb.GetAddressBalancesRequest,
-) (*rpc_pb.GetAddressBalancesResponse, er.R) {
-	if be, ok := r.server.cc.Wc.(*btcwallet.BtcWallet); !ok {
-		return nil, er.New("GetAddressBalances only possible with BtcWallet")
-	} else if adb, err := be.InternalWallet().CalculateAddressBalances(in.Minconf, in.Showzerobalance); err != nil {
-		return nil, err
-	} else {
-		resp := make([]*rpc_pb.GetAddressBalancesResponseAddr, 0, len(adb))
-		for k, v := range adb {
-			resp = append(resp, &rpc_pb.GetAddressBalancesResponseAddr{
-				Address:         k.EncodeAddress(),
-				Total:           v.Total.ToBTC(),
-				Stotal:          int64(v.Total),
-				Spendable:       v.Spendable.ToBTC(),
-				Sspendable:      int64(v.Spendable),
-				Immaturereward:  v.ImmatureReward.ToBTC(),
-				Simmaturereward: int64(v.ImmatureReward),
-				Unconfirmed:     v.Unconfirmed.ToBTC(),
-				Sunconfirmed:    int64(v.Unconfirmed),
-				Outputcount:     v.OutputCount,
-			})
-		}
-		return &rpc_pb.GetAddressBalancesResponse{Addrs: resp}, nil
-	}
 }
 
 // ChannelBalance returns the total available channel flow across all open
@@ -3901,7 +3825,7 @@ func (r *LightningRPCServer) sendPaymentSync(ctx context.Context,
 // unique payment preimage.
 func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 	invoice *rpc_pb.Invoice) (*rpc_pb.AddInvoiceResponse, er.R) {
-	
+
 	defaultDelta := r.cfg.Bitcoin.TimeLockDelta
 	if r.cfg.registeredChains.PrimaryChain() == chainreg.LitecoinChain {
 		defaultDelta = r.cfg.Litecoin.TimeLockDelta
@@ -3919,14 +3843,14 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 			return r.server.featureMgr.Get(feature.SetInvoice)
 		},
 	}
-	
+
 	value, err := lnrpc.UnmarshallAmt(invoice.Value, invoice.ValueMsat)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert the passed routing hints to the required format.
-		routeHints, err := invoicesrpc.CreateZpay32HopHints(invoice.RouteHints)
+	routeHints, err := invoicesrpc.CreateZpay32HopHints(invoice.RouteHints)
 	if err != nil {
 		return nil, err
 	}
@@ -3940,7 +3864,7 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 		Private:         invoice.Private,
 		RouteHints:      routeHints,
 	}
-	
+
 	if invoice.RPreimage != nil {
 		preimage, err := lntypes.MakePreimage(invoice.RPreimage)
 		if err != nil {
@@ -3948,14 +3872,14 @@ func (r *LightningRPCServer) AddInvoice(ctx context.Context,
 		}
 		addInvoiceData.Preimage = &preimage
 	}
-	
+
 	hash, dbInvoice, err := invoicesrpc.AddInvoice(
 		ctx, addInvoiceCfg, addInvoiceData,
 	)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &rpc_pb.AddInvoiceResponse{
 		AddIndex:       dbInvoice.AddIndex,
 		PaymentRequest: string(dbInvoice.PaymentRequest),
@@ -4629,7 +4553,7 @@ func (r *LightningRPCServer) SubscribeChannelGraph(req *rpc_pb.GraphTopologySubs
 
 	for {
 		select {
-		
+
 		// A new update has been sent by the channel router, we'll
 		// marshal it into the form expected by the gRPC client, then
 		// send it off.
@@ -5714,119 +5638,6 @@ func (r *LightningRPCServer) FundingStateStep0(ctx context.Context,
 	return &rpc_pb.FundingStateStepResp{}, nil
 }
 
-// Resync
-func (r *LightningRPCServer) ReSync(ctx context.Context, req *rpc_pb.ReSyncChainRequest) (*rpc_pb.Null, er.R) {
-	fh := req.FromHeight
-	if req.FromHeight == 0 {
-		fh = -1
-	}
-	th := req.ToHeight
-	if req.ToHeight == 0 {
-		th = -1
-	}
-	var a []string
-	if req.Addresses != nil {
-		a = req.Addresses
-	}
-	drop := req.DropDb
-	err := r.wallet.ResyncChain(fh, th, a, drop)
-	return nil, err
-}
-
-// StopResync
-func (r *LightningRPCServer) StopReSync(ctx context.Context, req *rpc_pb.Null) (*rpc_pb.Null, er.R) {
-	_, err := r.wallet.StopResync()
-	return nil, err
-}
-
-//	ChangeSeedPassphrase
-func (r *LightningRPCServer) ChangeSeedPassphrase(ctx context.Context, req *rpc_pb.ChangeSeedPassphraseRequest) (*rpc_pb.ChangeSeedPassphraseResponse, er.R) {
-
-	//	get current seed passphrase from request
-	//	if both bin and string passphrases are present, the bin have precedence
-	var currentSeedCipherPass []byte
-
-	if len(req.CurrentSeedPassphraseBin) > 0 {
-		currentSeedCipherPass = req.CurrentSeedPassphraseBin
-	} else if len(req.CurrentSeedPassphrase) > 0 {
-		currentSeedCipherPass = []byte(req.CurrentSeedPassphrase)
-	}
-
-	//	get current seed and decipher it if necessary
-	var mnemonic string
-
-	mnemonic = strings.Join(req.CurrentSeed, " ")
-	if len(mnemonic) == 0 {
-		return nil, er.New("Current seed is required in the request")
-	}
-
-	currentSeedCiphered, err := seedwords.SeedFromWords(mnemonic)
-	if err != nil {
-		return nil, err
-	}
-
-	currentSeed, err := currentSeedCiphered.Decrypt(currentSeedCipherPass, false)
-	if err != nil {
-		return nil, err
-	}
-
-	//	get new seed passphrase from request
-	//	if both bin and string passphrases are present, the bin have precedence
-	var newSeedCipherPass []byte
-
-	if len(req.NewSeedPassphraseBin) > 0 {
-		newSeedCipherPass = req.NewSeedPassphraseBin
-	} else if len(req.NewSeedPassphrase) > 0 {
-		newSeedCipherPass = []byte(req.NewSeedPassphrase)
-	}
-
-	//	cipher the seed with the new passphrase
-	newCipheredSeed := currentSeed.Encrypt(newSeedCipherPass)
-
-	//	get the mnemonic for the new ciphered seed
-	mnemonic, err = newCipheredSeed.Words("english")
-	if err != nil {
-		return nil, err
-	}
-
-	return &rpc_pb.ChangeSeedPassphraseResponse{
-		Seed: strings.Split(mnemonic, " "),
-	}, nil
-}
-
-//ImportPrivKey
-func (r *LightningRPCServer) ImportPrivKey(ctx context.Context, req *rpc_pb.ImportPrivKeyRequest) (*rpc_pb.ImportPrivKeyResponse, er.R) {
-	wif, err := btcutil.DecodeWIF(req.PrivateKey)
-	if err != nil {
-		return nil, err
-	}
-	w := r.wallet
-	if !wif.IsForNet(w.ChainParams()) {
-		// If the wif is for the wrong chain, lets attempt to import it anyway
-		var err er.R
-		wif, err = btcutil.NewWIF(wif.PrivKey, w.ChainParams(), wif.CompressPubKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	scope := waddrmgr.KeyScopeBIP0084
-	if req.Legacy {
-		scope = waddrmgr.KeyScopeBIP0044
-	}
-
-	// Import the private key, handling any errors.
-	addr, err := w.ImportPrivateKey(scope, wif, nil, req.Rescan)
-	switch {
-	case waddrmgr.ErrLocked.Is(err):
-		return nil, er.New("ErrRPCWalletUnlockNeeded: -13 Enter the wallet passphrase with walletpassphrase first")
-	}
-
-	return &rpc_pb.ImportPrivKeyResponse{
-		Address: addr,
-	}, err
-}
-
 //ListLockUnspent
 func (r *LightningRPCServer) ListLockUnspent(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, er.R) {
 	list := r.wallet.LockedOutpoints()
@@ -5886,354 +5697,6 @@ func (r *LightningRPCServer) UnlockUnspent(ctx context.Context, req *rpc_pb.Lock
 func (r *LightningRPCServer) UnlockAllUnspent(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.Null, er.R) {
 	r.wallet.ResetLockedOutpoints(nil)
 	return nil, nil
-}
-
-// makeOutputs creates a slice of transaction outputs from a pair of address
-// strings to amounts.  This is used to create the outputs to include in newly
-// created transactions from a JSON object describing the output destinations
-// and amounts.
-func makeOutputs(pairs map[string]btcutil.Amount, vote *waddrmgr.NetworkStewardVote,
-	chainParams *chaincfg.Params) ([]*wire.TxOut, er.R) {
-	outputs := make([]*wire.TxOut, 0, len(pairs))
-	if vote == nil {
-		vote = &waddrmgr.NetworkStewardVote{}
-	}
-	for addrStr, amt := range pairs {
-		addr, err := btcutil.DecodeAddress(addrStr, chainParams)
-		if err != nil {
-			return nil, er.Errorf("cannot decode address: %s", err)
-		}
-
-		pkScript, err := txscript.PayToAddrScriptWithVote(addr, vote.VoteFor, vote.VoteAgainst)
-		if err != nil {
-			return nil, er.Errorf("cannot create txout script: %s", err)
-		}
-
-		outputs = append(outputs, wire.NewTxOut(int64(amt), pkScript))
-	}
-	return outputs, nil
-}
-
-func sendOutputs(
-	w *wallet.Wallet,
-	amounts map[string]btcutil.Amount,
-	vote *waddrmgr.NetworkStewardVote,
-	fromAddressses *[]string,
-	minconf int32,
-	feeSatPerKb btcutil.Amount,
-	sendMode wallet.SendMode,
-	changeAddress *string,
-	inputMinHeight int,
-	maxInputs int,
-) (*txauthor.AuthoredTx, er.R) {
-	req := wallet.CreateTxReq{
-		Minconf:        minconf,
-		FeeSatPerKB:    feeSatPerKb,
-		SendMode:       sendMode,
-		InputMinHeight: inputMinHeight,
-		MaxInputs:      maxInputs,
-		Label:          "",
-	}
-	if inputMinHeight > 0 {
-		// TODO(cjd): Ideally we would expose the comparator choice to the
-		// API consumer, but this is an API break. When we're using inputMinHeight
-		// it's normally because we're trying to do multiple createtransaction
-		// requests without double-spending, so it's important to prefer oldest
-		// in this case.
-		req.InputComparator = wallet.PreferOldest
-	}
-	var err er.R
-	req.Outputs, err = makeOutputs(amounts, vote, w.ChainParams())
-	if err != nil {
-		return nil, err
-	}
-	if changeAddress != nil && *changeAddress != "" {
-		addr, err := btcutil.DecodeAddress(*changeAddress, w.ChainParams())
-		if err != nil {
-			return nil, err
-		}
-		req.ChangeAddress = &addr
-	}
-	if fromAddressses != nil && len(*fromAddressses) > 0 {
-		addrs := make([]btcutil.Address, 0, len(*fromAddressses))
-		for _, addrStr := range *fromAddressses {
-			addr, err := btcutil.DecodeAddress(addrStr, w.ChainParams())
-			if err != nil {
-				return nil, err
-			}
-			addrs = append(addrs, addr)
-		}
-		req.InputAddresses = addrs
-	}
-	tx, err := w.SendOutputs(req)
-	if err != nil {
-		if ruleerror.ErrNegativeTxOutValue.Is(err) {
-			return nil, er.New("amount must be positive")
-		}
-		if waddrmgr.ErrLocked.Is(err) {
-			return nil, er.New("Enter the wallet passphrase with walletpassphrase first")
-		}
-		if btcjson.Err.Is(err) {
-			return nil, err
-		}
-		return nil, btcjson.ErrRPCInternal.New("SendOutputs failed", err)
-	}
-	return tx, nil
-}
-
-//CreateTransaction
-func (r *LightningRPCServer) CreateTransaction(ctx context.Context, req *rpc_pb.CreateTransactionRequest) (*rpc_pb.CreateTransactionResponse, er.R) {
-	toaddress := req.ToAddress
-	amount := req.Amount
-	fromaddresses := req.FromAddress
-
-	autolock := req.Autolock
-
-	if amount <= 0 {
-		return nil, er.New("amount must be positive")
-	}
-	if math.IsInf(amount, 1) {
-		amount = 0
-	}
-	minconf := int32(req.MinConf)
-	if minconf < 0 {
-		return nil, er.New("minconf must be positive")
-	}
-	inputminheight := 0
-	if req.InputMinHeight > 0 {
-		inputminheight = int(req.InputMinHeight)
-	}
-	// Create map of address and amount pairs.
-	amt, err := btcutil.NewAmount(float64(amount))
-	if err != nil {
-		return nil, err
-	}
-	amounts := map[string]btcutil.Amount{
-		toaddress: amt,
-	}
-
-	var vote *waddrmgr.NetworkStewardVote
-	vote, err = r.wallet.NetworkStewardVote(0, waddrmgr.KeyScopeBIP0044)
-	if err != nil {
-		return nil, err
-	}
-	maxinputs := -1
-	maxinputs = int(req.MaxInputs)
-	sendmode := wallet.SendModeSigned
-	if !req.Sign {
-		sendmode = wallet.SendModeUnsigned
-	}
-	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, sendmode, &req.ChangeAddress, inputminheight, maxinputs)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, in := range tx.Tx.TxIn {
-		op := in.PreviousOutPoint
-		r.wallet.LockOutpoint(op, autolock)
-	}
-
-	var transaction []byte
-	if req.ElectrumFormat {
-		b := new(bytes.Buffer)
-		if err := tx.Tx.BtcEncode(b, 0, wire.ForceEptfEncoding); err != nil {
-			return nil, err
-		}
-		transaction = b.Bytes()
-	} else {
-		b := bytes.NewBuffer(make([]byte, 0, tx.Tx.SerializeSize()))
-		if err := tx.Tx.Serialize(b); err != nil {
-			return nil, err
-		}
-		transaction = b.Bytes()
-	}
-
-	return &rpc_pb.CreateTransactionResponse{
-		Transaction: transaction,
-	}, nil
-}
-
-func decodeAddress(s string, params *chaincfg.Params) (btcutil.Address, er.R) {
-	addr, err := btcutil.DecodeAddress(s, params)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid address %q: decode failed", s)
-		return nil, btcjson.ErrRPCInvalidAddressOrKey.New(msg, err)
-	}
-	if !addr.IsForNet(params) {
-		msg := fmt.Sprintf("Invalid address %q: not intended for use on %s",
-			addr, params.Name)
-		return nil, btcjson.ErrRPCInvalidAddressOrKey.New(msg, nil)
-	}
-	return addr, nil
-}
-
-//DumpPrivKey
-func (r *LightningRPCServer) DumpPrivKey(ctx context.Context, req *rpc_pb.DumpPrivKeyRequest) (*rpc_pb.DumpPrivKeyResponse, er.R) {
-	addr, err := decodeAddress(req.Address, r.wallet.ChainParams())
-	if err != nil {
-		return nil, err
-	}
-	key, err := r.wallet.DumpWIFPrivateKey(addr)
-	if waddrmgr.ErrLocked.Is(err) {
-		// Address was found, but the private key isn't
-		// accessible.
-		return nil, er.New("ErrRPCWalletUnlockNeeded -13 Enter the wallet passphrase with walletpassphrase first")
-	}
-	return &rpc_pb.DumpPrivKeyResponse{
-		PrivateKey: key,
-	}, nil
-}
-
-func (r *LightningRPCServer) GetNewAddress(ctx context.Context, req *rpc_pb.GetNewAddressRequest) (*rpc_pb.GetNewAddressResponse, er.R) {
-	scope := waddrmgr.KeyScopeBIP0084
-	if req.Legacy {
-		scope = waddrmgr.KeyScopeBIP0044
-	}
-	if addr, err := r.wallet.NewAddress(waddrmgr.DefaultAccountNum, scope); err != nil {
-		return nil, err
-	} else {
-		return &rpc_pb.GetNewAddressResponse{
-			Address: addr.EncodeAddress(),
-		}, nil
-	}
-}
-
-// confirms returns the number of confirmations for a transaction in a block at
-// height txHeight (or -1 for an unconfirmed tx) given the chain height
-// curHeight.
-func confirms(txHeight, curHeight int32) int32 {
-	switch {
-	case txHeight == -1, txHeight > curHeight:
-		return 0
-	default:
-		return curHeight - txHeight + 1
-	}
-}
-
-func (r *LightningRPCServer) GetTransaction(ctx context.Context, req *rpc_pb.GetTransactionRequest) (*rpc_pb.GetTransactionResponse, er.R) {
-	w := r.wallet
-	txHash, err := chainhash.NewHashFromStr(req.Txid)
-	if err != nil {
-		return nil, btcjson.ErrRPCDecodeHexString.New("Transaction hash string decode failed", err)
-	}
-
-	details, err := wallet.UnstableAPI(w).TxDetails(txHash)
-	if err != nil {
-		return nil, err
-	}
-	if details == nil {
-		return nil, btcjson.ErrRPCNoTxInfo.Default()
-	}
-
-	syncBlock := w.Manager.SyncedTo()
-
-	// TODO: The serialized transaction is already in the DB, so
-	// reserializing can be avoided here.
-	var txBuf bytes.Buffer
-	txBuf.Grow(details.MsgTx.SerializeSize())
-	err = details.MsgTx.Serialize(&txBuf)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: Add a "generated" field to this result type.  "generated":true
-	// is only added if the transaction is a coinbase.
-	transaction := rpc_pb.TransactionResult{
-		Txid:            req.Txid,
-		Raw:             txBuf.Bytes(),
-		Time:            details.Received.Unix(),
-		TimeReceived:    details.Received.Unix(),
-		WalletConflicts: []string{},
-	}
-
-	if details.Block.Height != -1 {
-		transaction.BlockHash = details.Block.Hash.String()
-		transaction.BlockTime = details.Block.Time.Unix()
-		transaction.Confirmations = int64(confirms(details.Block.Height, syncBlock.Height))
-	}
-
-	var (
-		debitTotal  btcutil.Amount
-		creditTotal btcutil.Amount // Excludes change
-		fee         btcutil.Amount
-		feeF64      float64
-	)
-	for _, deb := range details.Debits {
-		debitTotal += deb.Amount
-	}
-	for _, cred := range details.Credits {
-		if !cred.Change {
-			creditTotal += cred.Amount
-		}
-	}
-	// Fee can only be determined if every input is a debit.
-	if len(details.Debits) == len(details.MsgTx.TxIn) {
-		var outputTotal btcutil.Amount
-		for _, output := range details.MsgTx.TxOut {
-			outputTotal += btcutil.Amount(output.Value)
-		}
-		fee = debitTotal - outputTotal
-		feeF64 = fee.ToBTC()
-	}
-
-	if len(details.Debits) == 0 {
-		// Credits must be set later, but since we know the full length
-		// of the details slice, allocate it with the correct cap.
-		transaction.Details = make([]*rpc_pb.GetTransactionDetailsResult, 0, len(details.Credits))
-	} else {
-		transaction.Details = make([]*rpc_pb.GetTransactionDetailsResult, 1, len(details.Credits)+1)
-
-		transaction.Details[0] = &rpc_pb.GetTransactionDetailsResult{
-			// Fields left zeroed:
-			//   InvolvesWatchOnly
-			//   Account
-			//   Address
-			//   Vout
-			//
-			// TODO(jrick): Address and Vout should always be set,
-			// but we're doing the wrong thing here by not matching
-			// core.  Instead, gettransaction should only be adding
-			// details for transaction outputs, just like
-			// listtransactions (but using the short result format).
-			Category:    "send",
-			Amount:      (-debitTotal).ToBTC(), // negative since it is a send
-			AmountUnits: uint64(debitTotal),
-		}
-		transaction.Fee = feeF64
-		transaction.FeeUnits = uint64(fee)
-	}
-
-	credCat := wallet.RecvCategory(details, syncBlock.Height, w.ChainParams()).String()
-	for _, cred := range details.Credits {
-		// Change is ignored.
-		if cred.Change {
-			continue
-		}
-
-		var address string
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
-			details.MsgTx.TxOut[cred.Index].PkScript, w.ChainParams())
-		if err == nil && len(addrs) == 1 {
-			addr := addrs[0]
-			address = addr.EncodeAddress()
-		}
-
-		transaction.Details = append(transaction.Details, &rpc_pb.GetTransactionDetailsResult{
-			// Fields left zeroed:
-			//   InvolvesWatchOnly
-			//   Fee
-			Address:  address,
-			Category: credCat,
-			Amount:   cred.Amount.ToBTC(),
-			Vout:     cred.Index,
-		})
-	}
-	transaction.Amount = creditTotal.ToBTC()
-	transaction.AmountUnits = uint64(creditTotal)
-
-	return &rpc_pb.GetTransactionResponse{
-		Transaction: &transaction,
-	}, nil
 }
 
 func (r *LightningRPCServer) GetNetworkStewardVote(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.GetNetworkStewardVoteResponse, er.R) {
@@ -6300,123 +5763,6 @@ func (r *LightningRPCServer) BcastTransaction(ctx context.Context, req *rpc_pb.B
 	return &rpc_pb.BcastTransactionResponse{
 		TxnHash: txidhash.String(),
 	}, err
-}
-
-// sendPairs creates and sends payment transactions.
-// It returns the transaction hash in string format upon success
-// All errors are returned in btcjson.RPCError format
-func sendPairs(w *wallet.Wallet, amounts map[string]btcutil.Amount,
-	fromAddressses *[]string, minconf int32, feeSatPerKb btcutil.Amount, maxInputs, inputMinHeight int) (string, er.R) {
-
-	vote, err := w.NetworkStewardVote(0, waddrmgr.KeyScopeBIP0044)
-	if err != nil {
-		return "", err
-	}
-
-	tx, err := sendOutputs(w, amounts, vote, fromAddressses, minconf, feeSatPerKb, wallet.SendModeBcasted, nil, inputMinHeight, maxInputs)
-	if err != nil {
-		return "", err
-	}
-
-	txHashStr := tx.Tx.TxHash().String()
-	log.Infof("Successfully sent transaction [%s]", log.Txid(txHashStr))
-	return txHashStr, nil
-}
-
-//SendFrom
-func (r *LightningRPCServer) SendFrom(ctx context.Context, req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, er.R) {
-	toaddress := req.ToAddress
-	amount := req.Amount
-	fromaddresses := req.FromAddress
-
-	if amount <= 0 {
-		return nil, er.New("amount must be positive")
-	}
-	if math.IsInf(amount, 1) {
-		amount = 0
-	}
-	minconf := int32(req.MinConf)
-	if minconf < 0 {
-		return nil, er.New("minconf must be positive")
-	}
-	minheight := 0
-	if req.MinHeight > 0 {
-		minheight = int(req.MinHeight)
-	}
-	// Create map of address and amount pairs.
-	amt, err := btcutil.NewAmount(float64(amount))
-	if err != nil {
-		return nil, err
-	}
-	amounts := map[string]btcutil.Amount{
-		toaddress: amt,
-	}
-
-	maxinputs := -1
-	maxinputs = int(req.MaxInputs)
-
-	tx, err := sendPairs(r.wallet, amounts, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, maxinputs, minheight)
-	if err != nil {
-		return nil, err
-	}
-
-	return &rpc_pb.SendFromResponse{
-		TxHash: tx,
-	}, nil
-}
-
-func (r *LightningRPCServer) transactionGetter() func(txns map[string]*wire.MsgTx) er.R {
-	return func(txns map[string]*wire.MsgTx) er.R {
-		return walletdb.View(r.wallet.Database(), func(dbtx walletdb.ReadTx) er.R {
-			txmgrNs := dbtx.ReadBucket([]byte("wtxmgr"))
-			for k := range txns {
-				tx, err := r.wallet.TxStore.TxDetails(txmgrNs, chainhash.MustNewHashFromStr(k))
-				if err != nil {
-					// TxDetails only returns an error if something actually went wrong
-					// not found == nil, nil
-					return err
-				} else if tx != nil {
-					txns[k] = &tx.MsgTx
-				}
-			}
-			return nil
-		})
-	}
-}
-
-func (r *LightningRPCServer) DecodeRawTransaction(ctx context.Context, req *rpc_pb.DecodeRawTransactionRequest) (*rpc_pb.TransactionInfo, er.R) {
-	// Deserialize the transaction.
-	var serializedTx []byte
-	if len(req.BinTx) > 0 {
-		serializedTx = req.BinTx
-	} else {
-		hexStr := req.HexTx
-		if len(hexStr)%2 != 0 {
-			hexStr = "0" + hexStr
-		}
-		stx, err := util.DecodeHex(hexStr)
-		if err != nil {
-			return nil, err
-		}
-		serializedTx = stx
-	}
-
-	var mtx wire.MsgTx
-	err := mtx.Deserialize(bytes.NewReader(serializedTx))
-	if err != nil {
-		return nil, err
-	}
-
-	txi, err := describetxn.Describe(
-		r.transactionGetter(),
-		mtx,
-		r.cfg.ActiveNetParams.Params,
-		req.IncludeVinDetail,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return txi, nil
 }
 
 func isValidIPv6(addr string) bool {

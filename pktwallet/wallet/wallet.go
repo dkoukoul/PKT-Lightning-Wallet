@@ -172,6 +172,10 @@ const (
 	coinbaseOnly                     = 2
 )
 
+func (w *Wallet) RecoveryWindow() uint32 {
+	return w.recoveryWindow
+}
+
 func (w *Wallet) Database() walletdb.DB {
 	return w.db
 }
@@ -429,11 +433,11 @@ func (w *Wallet) syncWithChain(birthdayStamp *waddrmgr.BlockStamp) er.R {
 	// MaxReorgDepth blocks to store. We don't do this for development
 	// environments as we can't guarantee a lively chain.
 	if !w.isDevEnv() {
-		log.Info("Waiting for chain backend to sync to tip")
+		log.Infof("Waiting for chain backend to sync to tip")
 		if err := w.waitUntilBackendSynced(chainClient); err != nil {
 			return err
 		}
-		log.Info("Chain backend synced to tip! 👍")
+		log.Infof("Chain backend synced to tip! 👍")
 	}
 
 	// If we've yet to find our birthday block, we'll do so now.
@@ -1761,7 +1765,7 @@ func (w *Wallet) registerRpc() {
 		w.getWalletSeed,
 	)
 	apiv1.Endpoint(
-		w.api.Category("wallet/transaction"),
+		wallet.Category("transaction"),
 		"query",
 		`
 		List transactions from the wallet
@@ -3519,7 +3523,7 @@ func (w *Wallet) goMainLoop() {
 	}
 	w.registerRpc()
 	w.walletInit()
-	
+
 	for {
 		rapidCycle := w.rescan()
 		rapidCycle = w.checkBlock() || rapidCycle

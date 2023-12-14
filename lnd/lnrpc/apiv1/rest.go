@@ -242,7 +242,7 @@ func (a *Apiv1) cat(path string, description *string) *Apiv1 {
 			}
 		} else {
 			if _, ok := (*cats)[path]; ok {
-				log.Warnf("Creating category [%s] but it already exists")
+				log.Warnf("Creating category [%s] but it already exists", path)
 			}
 			(*cats)[path] = trimSplit(*description)
 		}

@@ -3,7 +3,6 @@ package chainreg
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -53,21 +52,6 @@ type Config struct {
 
 	// RemoteChanDB is a pointer to the remote backing channel database.
 	RemoteChanDB *channeldb.DB
-
-	// PrivateWalletPw is the private wallet password to the underlying
-	// btcwallet instance.
-	PrivateWalletPw []byte
-
-	// PublicWalletPw is the public wallet password to the underlying btcwallet
-	// instance.
-	PublicWalletPw []byte
-
-	// Birthday specifies the time the wallet was initially created.
-	Birthday time.Time
-
-	// RecoveryWindow specifies the address look-ahead for which to scan when
-	// restoring a wallet.
-	RecoveryWindow uint32
 
 	// Wallet is a pointer to the backing wallet instance.
 	Wallet *wallet.Wallet
@@ -269,14 +253,10 @@ func NewChainControl(cfg *Config, api *apiv1.Apiv1) (*ChainControl, er.R) {
 	}
 
 	walletConfig := &btcwallet.Config{
-		PrivatePass:    cfg.PrivateWalletPw,
-		PublicPass:     nil,
-		Birthday:       cfg.Birthday,
-		RecoveryWindow: cfg.RecoveryWindow,
-		DataDir:        homeChainConfig.ChainDir,
-		NetParams:      cfg.ActiveNetParams.Params,
-		CoinType:       cfg.ActiveNetParams.CoinType,
-		Wallet:         cfg.Wallet,
+		DataDir:   homeChainConfig.ChainDir,
+		NetParams: cfg.ActiveNetParams.Params,
+		CoinType:  cfg.ActiveNetParams.CoinType,
+		Wallet:    cfg.Wallet,
 	}
 
 	var err er.R
