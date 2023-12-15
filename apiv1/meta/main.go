@@ -148,7 +148,7 @@ func (r *rpc) getinfo(m *rpc_pb.Null) (*meta_pb.GetInfo2Response, er.R) {
 	}, nil
 }
 
-func (r *rpc) DebugLevel(in *rpc_pb.DebugLevelRequest) (*rpc_pb.Null, er.R) {
+func (r *rpc) debuglevel(in *rpc_pb.DebugLevelRequest) (*rpc_pb.Null, er.R) {
 	log.Infof("[debuglevel] changing debug level to: %v", in.LevelSpec)
 
 	// Otherwise, we'll attempt to set the logging level using the
@@ -161,12 +161,12 @@ func (r *rpc) DebugLevel(in *rpc_pb.DebugLevelRequest) (*rpc_pb.Null, er.R) {
 	return nil, nil
 }
 
-func (r *rpc) StopDaemon(in *rpc_pb.Null) (*rpc_pb.Null, er.R) {
+func (r *rpc) stopdaemon(in *rpc_pb.Null) (*rpc_pb.Null, er.R) {
 	os.Exit(0)
 	return nil, nil
 }
 
-func (r *rpc) Version(in *rpc_pb.Null) (*verrpc_pb.Version, er.R) {
+func (r *rpc) version(in *rpc_pb.Null) (*verrpc_pb.Version, er.R) {
 	return &verrpc_pb.Version{
 		Commit:        "UNKNOWN",
 		CommitHash:    "UNKNOWN",
@@ -210,7 +210,7 @@ func Register(
 		level, or in a granular fashion to specify the logging for a target
 		sub-system.
 		`,
-		r.DebugLevel,
+		r.debuglevel,
 	)
 	apiv1.Endpoint(
 		a,
@@ -221,7 +221,7 @@ func Register(
 		StopDaemon will send a shutdown request to the interrupt handler, triggering
 		a graceful shutdown of the daemon.
 		`,
-		r.StopDaemon,
+		r.stopdaemon,
 	)
 	apiv1.Endpoint(
 		a,
@@ -232,6 +232,6 @@ func Register(
 		GetVersion returns the current version and build information of the running
 		daemon.
 		`,
-		r.Version,
+		r.version,
 	)
 }

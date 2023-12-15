@@ -44,7 +44,7 @@ func (r *rpc) lockWallet(in *rpc_pb.Null) (*rpc_pb.Null, er.R) {
 	return nil, nil
 }
 
-func (r *rpc) getSecret(in *rpc_pb.GetSecretRequest) (*rpc_pb.GetSecretResponse, er.R) {
+func (r *rpc) getsecret(in *rpc_pb.GetSecretRequest) (*rpc_pb.GetSecretResponse, er.R) {
 	ptrsecret, err := r.w.GetSecret(in.Name)
 	secret := ""
 	if ptrsecret != nil {
@@ -58,7 +58,7 @@ func (r *rpc) getSecret(in *rpc_pb.GetSecretRequest) (*rpc_pb.GetSecretResponse,
 	}, nil
 }
 
-func (r *rpc) getWalletSeed(req *rpc_pb.GetWalletSeedRequest) (*rpc_pb.GetWalletSeedResponse, er.R) {
+func (r *rpc) seed(req *rpc_pb.GetWalletSeedRequest) (*rpc_pb.GetWalletSeedResponse, er.R) {
 	seed := r.w.Manager.Seed()
 	if seed == nil {
 		return nil, er.New("No seed found, this is probably a legacy wallet")
@@ -72,10 +72,10 @@ func (r *rpc) getWalletSeed(req *rpc_pb.GetWalletSeedRequest) (*rpc_pb.GetWallet
 	}, nil
 }
 
-// ChangePassword changes the password of the wallet and sends the new password
+// ChangePassphrase changes the password of the wallet and sends the new password
 // across the UnlockPasswords channel to automatically unlock the wallet if
 // successful.
-func (r *rpc) ChangePassword(in *meta_pb.ChangePasswordRequest) (*rpc_pb.Null, er.R) {
+func (r *rpc) changepassphrase(in *meta_pb.ChangePasswordRequest) (*rpc_pb.Null, er.R) {
 
 	//	fetch current wallet passphrase from request
 	var walletPassphrase []byte
@@ -127,7 +127,7 @@ func (r *rpc) ChangePassword(in *meta_pb.ChangePasswordRequest) (*rpc_pb.Null, e
 // by the wallet. This method can be modified by having the request specify
 // only witness outputs should be factored into the final output sum.
 // TODO(roasbeef): add async hooks into wallet balance changes
-func (r *rpc) WalletBalance(*rpc_pb.Null) (*rpc_pb.WalletBalanceResponse, er.R) {
+func (r *rpc) balance(*rpc_pb.Null) (*rpc_pb.WalletBalanceResponse, er.R) {
 
 	// Get total balance, from txs that have >= 0 confirmations.
 	totalBal, err := r.w.CalculateBalance(0)
@@ -156,7 +156,7 @@ func (r *rpc) WalletBalance(*rpc_pb.Null) (*rpc_pb.WalletBalanceResponse, er.R) 
 	}, nil
 }
 
-func (r *rpc) CheckPassword(in *meta_pb.CheckPasswordRequest) (*meta_pb.CheckPasswordResponse, er.R) {
+func (r *rpc) checkpassphrase(in *meta_pb.CheckPasswordRequest) (*meta_pb.CheckPasswordResponse, er.R) {
 
 	//	fetch current wallet passphrase from request
 	var walletPassphrase []byte
@@ -243,7 +243,7 @@ func Register(
 		`
 		Get a secret seed which is generated using the wallet's private key, this can be used as a password for another application
 		`,
-		r.getSecret,
+		r.getsecret,
 	)
 	apiv1.Endpoint(
 		walletCat,
@@ -254,7 +254,7 @@ func Register(
     	Get the wallet seed words for this wallet, this seed is returned in an
 		ENCRYPTED form (using the wallet passphrase as key). The output is 15 words.
 		`,
-		r.getWalletSeed,
+		r.seed,
 	)
 	apiv1.Endpoint(
 		walletCat,
@@ -266,7 +266,7 @@ func Register(
 		confirmed unspent outputs and all unconfirmed unspent outputs under control
 		of the wallet.
 		`,
-		r.WalletBalance,
+		r.balance,
 	)
 	apiv1.Endpoint(
 		walletCat,
@@ -277,7 +277,7 @@ func Register(
 		ChangePassword changes the password of the encrypted wallet. This will
 		automatically unlock the wallet database if successful.
 		`,
-		r.ChangePassword,
+		r.changepassphrase,
 	)
 	apiv1.Endpoint(
 		walletCat,
@@ -287,7 +287,7 @@ func Register(
 
     	CheckPassword verify that the password in the request is valid for the wallet.
 		`,
-		r.CheckPassword,
+		r.checkpassphrase,
 	)
 
 }

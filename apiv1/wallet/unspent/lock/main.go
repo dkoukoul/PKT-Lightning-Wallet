@@ -13,7 +13,7 @@ type rpc struct {
 	w        *wallet.Wallet
 }
 
-func (r *rpc) ListLockUnspent(_ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, er.R) {
+func (r *rpc) listlockunspent(_ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, er.R) {
 	list := r.w.LockedOutpoints()
 	lu := make(map[string][]*rpc_pb.OutPoint)
 	for _, l := range list {
@@ -31,7 +31,7 @@ func (r *rpc) ListLockUnspent(_ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, 
 	}, nil
 }
 
-func (r *rpc) LockUnspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.LockUnspentResponse, er.R) {
+func (r *rpc) lockunspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.LockUnspentResponse, er.R) {
 	w := r.w
 	lockname := "none"
 	if in.Lockname != "" {
@@ -49,7 +49,7 @@ func (r *rpc) LockUnspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.LockUnspentRes
 	return nil, nil
 }
 
-func (r *rpc) UnlockUnspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.Null, er.R) {
+func (r *rpc) unlockunspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.Null, er.R) {
 	w := r.w
 	if in.Lockname != "" {
 		w.ResetLockedOutpoints(&in.Lockname)
@@ -67,7 +67,7 @@ func (r *rpc) UnlockUnspent(in *rpc_pb.LockUnspentRequest) (*rpc_pb.Null, er.R) 
 	return nil, nil
 }
 
-func (r *rpc) UnlockAllUnspent(_ *rpc_pb.Null) (*rpc_pb.Null, er.R) {
+func (r *rpc) unlockallunspent(_ *rpc_pb.Null) (*rpc_pb.Null, er.R) {
 	r.w.ResetLockedOutpoints(nil)
 	return nil, nil
 }
@@ -83,7 +83,7 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		Returns an set of outpoints marked as locked by using /wallet/unspent/lock/create
 		These are batched by group name.
 		`,
-		r.ListLockUnspent,
+		r.listlockunspent,
 	)
 	apiv1.Endpoint(
 		a,
@@ -95,7 +95,7 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		multiple times with the same group name to add more unspents to the group.
 		NOTE: The lock group name "none" is reserved.
 		`,
-		r.LockUnspent,
+		r.lockunspent,
 	)
 	apiv1.Endpoint(
 		a,
@@ -107,7 +107,7 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		in addition to all unspents that are specifically identified. If the literal
 		word "none" is specified as the lock name, all uncategorized locks will be removed.
 		`,
-		r.UnlockUnspent,
+		r.unlockunspent,
 	)
 	apiv1.Endpoint(
 		a,
@@ -115,6 +115,6 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		`
 		Remove every lock, including all categories.
 		`,
-		r.UnlockAllUnspent,
+		r.unlockallunspent,
 	)
 }

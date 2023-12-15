@@ -17,7 +17,7 @@ type rpc struct {
 	w *wallet.Wallet
 }
 
-func (r *rpc) ListUnspent(in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentResponse, er.R) {
+func (r *rpc) listunspent(in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentResponse, er.R) {
 	// Validate the confirmation arguments.
 	minConfs, maxConfs, err := lnrpc.ParseConfs(in.MinConfs, in.MaxConfs)
 	if err != nil {
@@ -28,7 +28,7 @@ func (r *rpc) ListUnspent(in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentRes
 	if err != nil {
 		return nil, err
 	}
-	
+
 	witnessOutputs := make([]*rpc_pb.Utxo, 0, len(unspentOutputs))
 	for _, output := range unspentOutputs {
 		pkScript, err := util.DecodeHex(output.ScriptPubKey)
@@ -111,6 +111,6 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		ListUnspent returns a list of all utxos spendable by the wallet with a
 		number of confirmations between the specified minimum and maximum.
 		`,
-		r.ListUnspent,
+		r.listunspent,
 	)
 }

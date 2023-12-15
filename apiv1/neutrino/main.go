@@ -16,7 +16,7 @@ type rpc struct {
 	w *wallet.Wallet
 }
 
-func (r *rpc) BcastTransaction(in *rpc_pb.BcastTransactionRequest) (*rpc_pb.BcastTransactionResponse, er.R) {
+func (r *rpc) bcasttransaction(in *rpc_pb.BcastTransactionRequest) (*rpc_pb.BcastTransactionResponse, er.R) {
 	log.Debugf("[0] BcastTransaction(): req.tx(%d): %s", len(in.Tx), string(in.Tx))
 	dst := make([]byte, hex.DecodedLen(len(in.Tx)))
 	_, errr := hex.Decode(dst, in.Tx)
@@ -54,6 +54,6 @@ func Register(
 
 		Broadcast a transaction to the network so it can be logged in the chain.
 		`,
-		r.BcastTransaction,
+		r.bcasttransaction,
 	)
 }
