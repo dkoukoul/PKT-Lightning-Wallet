@@ -1,15 +1,20 @@
 package meta
 
 import (
+	"os"
 	"strconv"
 
 	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/btcutil/util"
 	"github.com/pkt-cash/pktd/connmgr/banmgr"
 	"github.com/pkt-cash/pktd/generated/proto/meta_pb"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
+	"github.com/pkt-cash/pktd/generated/proto/verrpc_pb"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
 	"github.com/pkt-cash/pktd/neutrino"
+	"github.com/pkt-cash/pktd/pktconfig/version"
+	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/waddrmgr"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
 )
@@ -143,6 +148,38 @@ func (r *rpc) getinfo(m *rpc_pb.Null) (*meta_pb.GetInfo2Response, er.R) {
 	}, nil
 }
 
+func (r *rpc) DebugLevel(in *rpc_pb.DebugLevelRequest) (*rpc_pb.Null, er.R) {
+	log.Infof("[debuglevel] changing debug level to: %v", in.LevelSpec)
+
+	// Otherwise, we'll attempt to set the logging level using the
+	// specified level spec.
+	err := log.SetLogLevels(in.LevelSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (r *rpc) StopDaemon(in *rpc_pb.Null) (*rpc_pb.Null, er.R) {
+	os.Exit(0)
+	return nil, nil
+}
+
+func (r *rpc) Version(in *rpc_pb.Null) (*verrpc_pb.Version, er.R) {
+	return &verrpc_pb.Version{
+		Commit:        "UNKNOWN",
+		CommitHash:    "UNKNOWN",
+		BuildTags:     []string{"UNKNOWN"},
+		GoVersion:     "UNKNOWN",
+		Version:       version.Version(),
+		AppMajor:      uint32(version.AppMajorVersion()),
+		AppMinor:      uint32(version.AppMinorVersion()),
+		AppPatch:      uint32(version.AppPatchVersion()),
+		AppPreRelease: util.If(version.IsPrerelease(), "true", "false"),
+	}, nil
+}
+
 func Register(
 	a *apiv1.Apiv1,
 	neutrinoCS *neutrino.ChainService,
@@ -160,5 +197,41 @@ func Register(
 		concerning the number of open+pending channels.
 		`,
 		r.getinfo,
+	)
+
+	apiv1.Endpoint(
+		a,
+		"debuglevel",
+		`
+		Set the debug level
+
+		DebugLevel allows a caller to programmatically set the logging verbosity of
+		lnd. The logging can be targeted according to a coarse daemon-wide logging
+		level, or in a granular fashion to specify the logging for a target
+		sub-system.
+		`,
+		r.DebugLevel,
+	)
+	apiv1.Endpoint(
+		a,
+		"stop",
+		`
+		Stop and shutdown the daemon
+
+		StopDaemon will send a shutdown request to the interrupt handler, triggering
+		a graceful shutdown of the daemon.
+		`,
+		r.StopDaemon,
+	)
+	apiv1.Endpoint(
+		a,
+		"version",
+		`
+		Display pld version info
+
+		GetVersion returns the current version and build information of the running
+		daemon.
+		`,
+		r.Version,
 	)
 }

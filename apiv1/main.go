@@ -37,7 +37,7 @@ func Register(
 	api_neutrino.Register(
 		apiv1.DefineCategory(a, "neutrino",
 			"The Neutrino interface which is used to communicate with the p2p nodes in the network"),
-		neutrinoCS,
+		w,
 	)
 	meta.Register(
 		apiv1.DefineCategory(a, "meta",

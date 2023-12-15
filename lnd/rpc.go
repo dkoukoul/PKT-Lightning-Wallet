@@ -10,17 +10,14 @@ import (
 	"context"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
-	"github.com/pkt-cash/pktd/btcutil/util"
 	"github.com/pkt-cash/pktd/generated/proto/restrpc_pb/help_pb"
 	"github.com/pkt-cash/pktd/generated/proto/routerrpc_pb"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
-	"github.com/pkt-cash/pktd/generated/proto/verrpc_pb"
 	"github.com/pkt-cash/pktd/generated/proto/wtclientrpc_pb"
 	"github.com/pkt-cash/pktd/lnd/lnrpc"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/routerrpc"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/wtclientrpc"
-	"github.com/pkt-cash/pktd/pktconfig/version"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -653,75 +650,6 @@ func (c *RpcContext) RegisterFunctions(a *apiv1.Apiv1) {
 		`,
 		withWtclient(c, func(rs *wtclientrpc.WatchtowerClient, req *wtclientrpc_pb.PolicyRequest) (*wtclientrpc_pb.PolicyResponse, er.R) {
 			return rs.Policy(context.TODO(), req)
-		}),
-	)
-
-	//	>>> meta category command
-	meta := apiv1.DefineCategory(a, "meta",
-		"API endpoints which are relevant to the entire pld node, not any specific module")
-	apiv1.Endpoint(
-		meta,
-		"debuglevel",
-		`
-		Set the debug level
-
-		DebugLevel allows a caller to programmatically set the logging verbosity of
-		lnd. The logging can be targeted according to a coarse daemon-wide logging
-		level, or in a granular fashion to specify the logging for a target
-		sub-system.
-		`,
-		withRpc(c, func(rs *LightningRPCServer, req *rpc_pb.DebugLevelRequest) (*rpc_pb.Null, er.R) {
-			return rs.DebugLevel(context.TODO(), req)
-		}),
-	)
-	apiv1.Endpoint(
-		meta,
-		"stop",
-		`
-		Stop and shutdown the daemon
-
-		StopDaemon will send a shutdown request to the interrupt handler, triggering
-		a graceful shutdown of the daemon.
-		`,
-		withRpc(c, func(rs *LightningRPCServer, req *rpc_pb.Null) (*rpc_pb.Null, er.R) {
-			return rs.StopDaemon(context.TODO(), req)
-		}),
-	)
-	apiv1.Endpoint(
-		meta,
-		"version",
-		`
-		Display pld version info
-
-		GetVersion returns the current version and build information of the running
-		daemon.
-		`,
-		func(req *rpc_pb.Null) (*verrpc_pb.Version, er.R) {
-			return &verrpc_pb.Version{
-				Commit:        "UNKNOWN",
-				CommitHash:    "UNKNOWN",
-				BuildTags:     []string{"UNKNOWN"},
-				GoVersion:     "UNKNOWN",
-				Version:       version.Version(),
-				AppMajor:      uint32(version.AppMajorVersion()),
-				AppMinor:      uint32(version.AppMinorVersion()),
-				AppPatch:      uint32(version.AppPatchVersion()),
-				AppPreRelease: util.If(version.IsPrerelease(), "true", "false"),
-			}, nil
-		},
-	)
-
-	neutrino := a.Category("neutrino")
-	apiv1.Endpoint(
-		neutrino,
-		"bcasttransaction",
-		`
-		Broadcast a transaction to the network
-
-		Broadcast a transaction to the network so it can be logged in the chain.
-		`,
-		withRpc(c, func(rs *LightningRPCServer, req *rpc_pb.BcastTransactionRequest) (*rpc_pb.BcastTransactionResponse, er.R) {
-			return rs.BcastTransaction(context.TODO(), req)
 		}),
 	)
 
