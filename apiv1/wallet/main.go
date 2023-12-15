@@ -51,9 +51,9 @@ func (r *rpc) getSecret(in *rpc_pb.GetSecretRequest) (*rpc_pb.GetSecretResponse,
 		secret = *ptrsecret
 	}
 	if err != nil {
-		return nil, err
+		return nil, er.New("Unlock wallet first to get secret")
 	}
-	return &rpc_pb.GetSecretResponse{
+	return &rpc_pb.GetSecretResponse {
 		Secret: secret,
 	}, nil
 }

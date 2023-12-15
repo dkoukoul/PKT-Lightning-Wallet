@@ -1,22 +1,20 @@
 package unspent
 
 import (
-	"fmt"
-	"math"
-
+	"github.com/pkt-cash/pktd/apiv1/wallet/unspent/lock"
+	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/btcutil/util"
+	"github.com/pkt-cash/pktd/chaincfg/chainhash"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
 	"github.com/pkt-cash/pktd/lnd/lnrpc"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
-	"github.com/pkt-cash/pktd/lnd/lnwallet"
-	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
-	"github.com/pkt-cash/pktd/apiv1/wallet/unspent/lock"
+	"github.com/pkt-cash/pktd/txscript"
 )
 
 type rpc struct {
 	w *wallet.Wallet
-	lnwallet *lnwallet.LightningWallet
 }
 
 func (r *rpc) ListUnspent(in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentResponse, er.R) {
@@ -25,39 +23,63 @@ func (r *rpc) ListUnspent(in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentRes
 	if err != nil {
 		return nil, err
 	}
-
-	// With our arguments validated, we'll query the internal wallet for
-	// the set of UTXOs that match our query.
-	//
-	// We'll acquire the global coin selection lock to ensure there aren't
-	// any other concurrent processes attempting to lock any UTXOs which may
-	// be shown available to us.
-	var utxos []*lnwallet.Utxo
-	err = r.lnwallet.WithCoinSelectLock(func() er.R {
-		utxos, err = r.lnwallet.ListUnspentWitness(
-			minConfs, maxConfs,
-		)
-		return err
-	})
+	
+	unspentOutputs, err := r.w.ListUnspent(minConfs, maxConfs, nil)
 	if err != nil {
 		return nil, err
 	}
-	params := r.w.ChainParams()
-	rpcUtxos, err := lnrpc.MarshalUtxos(utxos, params)
-	if err != nil {
-		return nil, err
-	}
+	
+	witnessOutputs := make([]*rpc_pb.Utxo, 0, len(unspentOutputs))
+	for _, output := range unspentOutputs {
+		pkScript, err := util.DecodeHex(output.ScriptPubKey)
+		if err != nil {
+			return nil, err
+		}
 
-	maxStr := ""
-	if maxConfs != math.MaxInt32 {
-		maxStr = " max=" + fmt.Sprintf("%d", maxConfs)
-	}
+		//addressType := rpc_pb.UnknownAddressType
+		addressType := rpc_pb.AddressType_UNUSED_WITNESS_PUBKEY_HASH
+		if txscript.IsPayToWitnessPubKeyHash(pkScript) {
+			//addressType = lnwallet.WitnessPubKey
+			addressType = rpc_pb.AddressType_WITNESS_PUBKEY_HASH
+		} else if txscript.IsPayToScriptHash(pkScript) {
+			// TODO(roasbeef): This assumes all p2sh outputs returned by the
+			// wallet are nested p2pkh. We can't check the redeem script because
+			// the btcwallet service does not include it.
+			//addressType = lnwallet.NestedWitnessPubKey
+			addressType = rpc_pb.AddressType_NESTED_PUBKEY_HASH
+		}
 
-	log.Debugf("[listunspent] min=%v%v, generated utxos: %v", minConfs,
-		maxStr, utxos)
+		//if addressType == lnwallet.WitnessPubKey ||
+		//	addressType == lnwallet.NestedWitnessPubKey {
+		if addressType == rpc_pb.AddressType_WITNESS_PUBKEY_HASH ||
+			addressType == rpc_pb.AddressType_NESTED_PUBKEY_HASH {
+
+			txid, err := chainhash.NewHashFromStr(output.TxID)
+			if err != nil {
+				return nil, err
+			}
+
+			// We'll ensure we properly convert the amount given in
+			// BTC to satoshis.
+			amt, err := btcutil.NewAmount(output.Amount)
+			if err != nil {
+				return nil, err
+			}
+			//fill the utxo
+			utxo := &rpc_pb.Utxo{
+				AddressType: 	addressType,
+				AmountSat:      int64(amt),
+				Outpoint: &rpc_pb.OutPoint{
+					TxidBytes: txid[:],
+					TxidStr:  output.TxID,
+				},
+			}
+			witnessOutputs = append(witnessOutputs, utxo)
+		}
+	}
 
 	return &rpc_pb.ListUnspentResponse{
-		Utxos: rpcUtxos,
+		Utxos: witnessOutputs,
 	}, nil
 }
 
