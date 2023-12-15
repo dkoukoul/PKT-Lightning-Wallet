@@ -20,11 +20,9 @@ import (
 )
 
 type rpc struct {
-	w                *wallet.Wallet
-	lnwallet         *lnwallet.LightningWallet
-	startLightning   *mailbox.Mailbox[*lightning.StartLightning]
+	w              *wallet.Wallet
+	startLightning *mailbox.Mailbox[*lightning.StartLightning]
 }
-
 
 func (r *rpc) unlockWallet(in *walletunlocker_pb.UnlockWalletRequest) (*rpc_pb.Null, er.R) {
 	var unlockAfter <-chan time.Time
@@ -132,8 +130,7 @@ func (r *rpc) ChangePassword(in *meta_pb.ChangePasswordRequest) (*rpc_pb.Null, e
 func (r *rpc) WalletBalance(*rpc_pb.Null) (*rpc_pb.WalletBalanceResponse, er.R) {
 
 	// Get total balance, from txs that have >= 0 confirmations.
-
-	totalBal, err := r.lnwallet.ConfirmedBalance(0)
+	totalBal, err := r.w.CalculateBalance(0)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +138,7 @@ func (r *rpc) WalletBalance(*rpc_pb.Null) (*rpc_pb.WalletBalanceResponse, er.R) 
 	// Get confirmed balance, from txs that have >= 1 confirmations.
 	// TODO(halseth): get both unconfirmed and confirmed balance in one
 	// call, as this is racy.
-	confirmedBal, err := r.lnwallet.ConfirmedBalance(1)
+	confirmedBal, err := r.w.CalculateBalance(1)
 	if err != nil {
 		return nil, err
 	}
@@ -292,5 +289,5 @@ func Register(
 		`,
 		r.CheckPassword,
 	)
-	
+
 }
