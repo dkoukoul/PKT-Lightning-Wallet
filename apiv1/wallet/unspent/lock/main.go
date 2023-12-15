@@ -5,14 +5,12 @@ import (
 	"github.com/pkt-cash/pktd/chaincfg/chainhash"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
-	"github.com/pkt-cash/pktd/lnd/lnwallet"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
 	"github.com/pkt-cash/pktd/wire"
 )
 
 type rpc struct {
 	w        *wallet.Wallet
-	lnwallet *lnwallet.LightningWallet
 }
 
 func (r *rpc) ListLockUnspent(_ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, er.R) {
