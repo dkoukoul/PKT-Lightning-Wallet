@@ -950,7 +950,7 @@ func (w *Wallet) ChangePassphrases(publicOld, publicNew, privateOld,
 	return <-err
 }
 
-//	CheckPassphrases verifies the public and private passphrase of the wallet
+// CheckPassphrases verifies the public and private passphrase of the wallet
 func (w *Wallet) CheckPassphrase(publicPw, walletPassphrase []byte) er.R {
 
 	err := make(chan er.R, 1)
@@ -998,19 +998,6 @@ func (w *Wallet) GetSecret(name string) (*string, er.R) {
 		return err
 	})
 	return out, err
-}
-func (w *Wallet) getSecretRPC(req *rpc_pb.GetSecretRequest) (*rpc_pb.GetSecretResponse, er.R) {
-	ptrsecret, err := w.GetSecret(req.Name)
-	secret := ""
-	if ptrsecret != nil {
-		secret = *ptrsecret
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &rpc_pb.GetSecretResponse{
-		Secret: secret,
-	}, nil
 }
 
 // CalculateBalance sums the amounts of all unspent transaction
@@ -1725,63 +1712,7 @@ func (w *Wallet) GetTransactions1(req *rpc_pb.GetTransactionsRequest) (*rpc_pb.T
 }
 
 // GetWalletSeed
-func (w *Wallet) getWalletSeed(req *rpc_pb.GetWalletSeedRequest) (*rpc_pb.GetWalletSeedResponse, er.R) {
-	seed := w.Manager.Seed()
-	if seed == nil {
-		return nil, er.New("No seed found, this is probably a legacy wallet")
-	}
-	words, err := seed.Words("english")
-	if err != nil {
-		return nil, err
-	}
-	return &rpc_pb.GetWalletSeedResponse{
-		Seed: strings.Split(words, " "),
-	}, nil
-}
-
 func (w *Wallet) registerRpc() {
-	wallet := w.api.Category("wallet")
-	apiv1.Endpoint(
-		wallet,
-		"getsecret",
-		`
-		Get a secret
-
-		This provides which is generated using the wallet's private keys,
-		this can be used as a password for another application. It will be
-		the same as long as this wallet exists, even if it is re-recovered from seed.
-		`,
-		w.getSecretRPC,
-	)
-	apiv1.Endpoint(
-		wallet,
-		"seed",
-		`
-		Get the wallet seed words for this wallet
-
-    	Get the wallet seed words for this wallet, this seed is returned in an
-		ENCRYPTED form (using the wallet passphrase as key). The output is 15 words.
-		`,
-		w.getWalletSeed,
-	)
-	apiv1.Endpoint(
-		wallet.Category("transaction"),
-		"query",
-		`
-		List transactions from the wallet
-
-		Returns a list describing all the known transactions relevant to the wallet.
-		This includes confirmed (in the chain) transactions, and unconfirmed (mempool)
-		transactions, but not transactions which have been made with /wallet/transaction/create
-		but have not yet been broadcasted to the network.
-		This also does not include transactions that are not known to be relevant to the wallet,
-		if transactions are missing then a resync may be necessary.
-		`,
-		func(req *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
-			return w.GetTransactions1(req)
-		},
-	)
-
 	walletLoosetxns := apiv1.DefineCategory(w.api.Category("wallet"), "loosetxns",
 		`
 		Loose transactions which have not yet been logged in the blockchain

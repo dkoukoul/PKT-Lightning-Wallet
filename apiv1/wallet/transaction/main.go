@@ -293,6 +293,10 @@ func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, e
 	}, nil
 }
 
+func (r *rpc) GetTransactions(in *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
+	return r.w.GetTransactions1(in)
+}
+
 func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 	r := rpc{w: w}
 	apiv1.Endpoint(
@@ -364,5 +368,20 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		will be missing such as input amounts and fees.
 		`,
 		r.decodeRawTransaction,
+	)
+	apiv1.Endpoint(
+		a,
+		"query",
+		`
+		List transactions from the wallet
+
+		Returns a list describing all the known transactions relevant to the wallet.
+		This includes confirmed (in the chain) transactions, and unconfirmed (mempool)
+		transactions, but not transactions which have been made with /wallet/transaction/create
+		but have not yet been broadcasted to the network.
+		This also does not include transactions that are not known to be relevant to the wallet,
+		if transactions are missing then a resync may be necessary.
+		`,
+		r.GetTransactions,
 	)
 }
