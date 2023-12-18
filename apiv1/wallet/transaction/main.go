@@ -2,7 +2,6 @@ package transaction
 
 import (
 	"bytes"
-	"encoding/hex"
 	"math"
 
 	"github.com/pkt-cash/pktd/btcjson"
@@ -233,7 +232,7 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 		op := in.PreviousOutPoint
 		r.w.LockOutpoint(op, autolock)
 	}
-//MDEwMDAwMDAwMTBkMjY4ZmNiOTQzY2Y1NTZmZTljMGNiYWQ0YzZiNWE3NTlhMDYwNzk2Y2VkMDgxNmQ5NThkMjZjNzYxNWZhYzgwMTAwMDAwMDAwZmZmZmZmZmYwMjg0MzFiODAwNzgzOTAwMDAxNjAwMTRmNDdkNGZmMTNhZmNmY2Q3OTk5ZmQ4NjkyYmQ3OWI2ZGE0ZTI1OGY2MDAwMDAwMDAxOTAwMDAwMDE2MDAxNDI1NzI4Y2JhMWM1ZGZiNTA4MGRkMWNkYTkxOTVkNTQ0Njc1MWRlZjUwMDAwMDAwMA==
+
 	var transaction []byte
 	if req.ElectrumFormat {
 		b := new(bytes.Buffer)
@@ -248,9 +247,9 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 		}
 		transaction = b.Bytes()
 	}
-	//Convert to hex string
+
 	return &rpc_pb.CreateTransactionResponse{
-		Transaction: []byte(hex.EncodeToString(transaction)),
+		Transaction: transaction,
 	}, nil
 }
 
@@ -296,6 +295,23 @@ func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, e
 
 func (r *rpc) GetTransactions(in *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
 	return r.w.GetTransactions1(in)
+}
+
+func (r *rpc) publish(in *rpc_pb.PublishTransactionRequest) (*rpc_pb.PublishTransactionResponse, er.R) {
+	var msgTx wire.MsgTx
+
+	err := msgTx.Deserialize(bytes.NewReader(in.Tx))
+	if err != nil {
+		return nil, err
+	}
+
+	txidhash, err := r.w.ReliablyPublishTransaction(&msgTx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &rpc_pb.PublishTransactionResponse{
+		TxnHash: txidhash.String(),
+	}, nil
 }
 
 func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
@@ -385,4 +401,13 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		`,
 		r.GetTransactions,
 	)
+	apiv1.Endpoint(
+		a,
+		"publish",
+		`
+		Publish a transaction to the network
+		`,
+		r.publish,
+	)
+
 }
