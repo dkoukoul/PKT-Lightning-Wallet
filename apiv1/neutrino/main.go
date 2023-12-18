@@ -31,7 +31,7 @@ func (r *rpc) bcasttransaction(in *rpc_pb.BcastTransactionRequest) (*rpc_pb.Bcas
 		return nil, err
 	}
 
-	txidhash, err := r.w.ReliablyPublishTransaction(&msgTx, "")
+	txidhash, err := r.w.ChainClient().SendRawTransaction(&msgTx, true)
 	if err != nil {
 		return nil, err
 	}

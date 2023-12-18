@@ -1,6 +1,8 @@
 package wallet
 
 import (
+	"bytes"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/pkt-cash/pktd/lnd/lnwallet"
 	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
+	"github.com/pkt-cash/pktd/wire"
 )
 
 type rpc struct {
@@ -190,6 +193,27 @@ func (r *rpc) checkpassphrase(in *meta_pb.CheckPasswordRequest) (*meta_pb.CheckP
 	}, nil
 }
 
+func (r *rpc) publishtransaction(in *rpc_pb.PublishTransactionRequest) (*rpc_pb.PublishTransactionResponse, er.R) {
+	dst := make([]byte, hex.DecodedLen(len(in.Tx)))
+	_, errr := hex.Decode(dst, in.Tx)
+	if errr != nil {
+		return nil, er.E(errr)
+	}
+	var msgTx wire.MsgTx
+
+	err := msgTx.Deserialize(bytes.NewReader(dst))
+	if err != nil {
+		return nil, err
+	}
+	txidhash, err := r.w.ReliablyPublishTransaction(&msgTx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &rpc_pb.PublishTransactionResponse{
+		TxnHash: txidhash.String(),
+	}, nil
+}
+//AQAAAAENJo/LlDz1Vv6cDLrUxrWnWaBgeWztCBbZWNJsdhX6yAEAAAAA/////wKEMbgAeDkAABYAFPR9T/E6/PzXmZ/YaSvXm22k4lj2AAAAABkAAAAWABQlcoy6HF37UIDdHNqRldVEZ1He9QAAAAA=
 func Register(
 	walletCat *apiv1.Apiv1,
 	w *wallet.Wallet,
@@ -289,5 +313,12 @@ func Register(
 		`,
 		r.checkpassphrase,
 	)
-
+	apiv1.Endpoint(
+		walletCat,
+		"publishtransaction",
+		`
+		Publish a transaction to the network
+		`,
+		r.publishtransaction,
+	)
 }

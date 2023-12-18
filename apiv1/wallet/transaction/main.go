@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"bytes"
+	"encoding/hex"
 	"math"
 
 	"github.com/pkt-cash/pktd/btcjson"
@@ -232,7 +233,7 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 		op := in.PreviousOutPoint
 		r.w.LockOutpoint(op, autolock)
 	}
-
+//MDEwMDAwMDAwMTBkMjY4ZmNiOTQzY2Y1NTZmZTljMGNiYWQ0YzZiNWE3NTlhMDYwNzk2Y2VkMDgxNmQ5NThkMjZjNzYxNWZhYzgwMTAwMDAwMDAwZmZmZmZmZmYwMjg0MzFiODAwNzgzOTAwMDAxNjAwMTRmNDdkNGZmMTNhZmNmY2Q3OTk5ZmQ4NjkyYmQ3OWI2ZGE0ZTI1OGY2MDAwMDAwMDAxOTAwMDAwMDE2MDAxNDI1NzI4Y2JhMWM1ZGZiNTA4MGRkMWNkYTkxOTVkNTQ0Njc1MWRlZjUwMDAwMDAwMA==
 	var transaction []byte
 	if req.ElectrumFormat {
 		b := new(bytes.Buffer)
@@ -247,9 +248,9 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 		}
 		transaction = b.Bytes()
 	}
-
+	//Convert to hex string
 	return &rpc_pb.CreateTransactionResponse{
-		Transaction: transaction,
+		Transaction: []byte(hex.EncodeToString(transaction)),
 	}, nil
 }
 
