@@ -14,7 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
+	"strconv"
 	"strings"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -52,7 +52,7 @@ func main1() er.R {
 	//	one or more arguments means the help + command
 	//		or command to be executed followed by arguments to build request payload
 	command := flag.Args()[0]
-	isHelp := false
+		isHelp := false
 
 	//	if the user wants help on a command
 	if command == "help" {
@@ -63,32 +63,41 @@ func main1() er.R {
 		command = flag.Args()[1]
 	}
 	if command == "unlock" {
-		// see if there is a wallet file
-		walletFile := ""
+		startLightning := false
+		timeout := 300
 		if len(flag.Args()) >= 2 {
-			walletFile = flag.Args()[1]
+			// Check if the next argument is --timeout
+			argument := flag.Args()[1]
+			if strings.Contains(argument, "--timeout") {
+				splitArg := strings.Split(argument, "=")
+				if len(splitArg) > 1 {
+					var err error
+					timeout, err = strconv.Atoi(splitArg[1])
+					if err != nil {
+						fmt.Println("Error converting timeout value to int, setting to 300:", err)
+					} else {
+						fmt.Printf("Unlocking for %d seconds...\n", timeout)
+					}
+				}
+			} else if strings.Contains(argument, "--start_lightning") {
+				startLightning = true
+			}
 		}
-		if (walletFile != "") {
-			fmt.Printf("Enter password for %s: ", walletFile)
-		} else {
-			fmt.Print("Enter password for wallet: ")
-		}
+
+		fmt.Print("Enter password for wallet: ")
 		password, err := terminal.ReadPassword(int(os.Stdin.Fd()))
 		if err != nil {
 			fmt.Println("Error:", err)
 			return er.Errorf("error: unable to read password\n")
 		}
 		fmt.Println("")
-		requesPayload := ""
-		if (walletFile != "") {
-			if path.Ext(walletFile) == "" {
-				walletFile += ".db"
-			}
-			requesPayload = "{ \"wallet_passphrase\": \""+string(password)+"\", \"wallet_name\": \""+string(walletFile)+"\" }"
+		if !startLightning {
+			requestPayload := "{ \"wallet_passphrase\": \"" + string(password) + "\", \"timeout_seconds\":" + strconv.Itoa(timeout) + " }"
+			return executeCommand(pldServer, "wallet/unlock", requestPayload)
 		} else {
-			requesPayload = "{ \"wallet_passphrase\": \""+string(password)+"\" }"
+			requestPayload := "{ \"wallet_passphrase\": \"" + string(password) + "\" }"
+			return executeCommand(pldServer, "lightning/start", requestPayload)
 		}
-		return executeCommand(pldServer, "wallet/unlock", requesPayload)
 	}
 	help, err := getEndpointHelp(pldServer + "/api/v1/help/" + command)
 	if err != nil {

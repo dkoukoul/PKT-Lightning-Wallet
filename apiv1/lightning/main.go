@@ -57,11 +57,10 @@ func (r *rpc) start(in *walletunlocker_pb.StartLightningRequest) (*rpc_pb.Null, 
 		StartupComplete:   mailbox.NewMailbox(false),
 		ChannelsToRestore: extractChanBackups(in.ChannelBackups),
 	}
-	complete := mailbox.NewMailbox(false)
 
 	r.startLightning.Store(&sl)
 
-	complete.AwaitUpdate()
+	sl.StartupComplete.AwaitUpdate()
 
 	return nil, nil
 }
