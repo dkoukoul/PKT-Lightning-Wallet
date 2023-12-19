@@ -293,10 +293,6 @@ func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, e
 	}, nil
 }
 
-func (r *rpc) GetTransactions(in *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
-	return r.w.GetTransactions1(in)
-}
-
 func (r *rpc) publish(in *rpc_pb.PublishTransactionRequest) (*rpc_pb.PublishTransactionResponse, er.R) {
 	var msgTx wire.MsgTx
 
@@ -399,7 +395,7 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		This also does not include transactions that are not known to be relevant to the wallet,
 		if transactions are missing then a resync may be necessary.
 		`,
-		r.GetTransactions,
+		r.w.GetTransactions1,
 	)
 	apiv1.Endpoint(
 		a,
