@@ -290,57 +290,6 @@ func (r *LightningRPCServer) sendCoinsOnChain(paymentMap map[string]int64,
 	return &txHash, nil
 }
 
-// ListUnspent returns useful information about each unspent output owned by the
-// wallet, as reported by the underlying `ListUnspentWitness`; the information
-// returned is: outpoint, amount in satoshis, address, address type,
-// scriptPubKey in hex and number of confirmations.  The result is filtered to
-// contain outputs whose number of confirmations is between a minimum and
-// maximum number of confirmations specified by the user, with 0 meaning
-// unconfirmed.
-func (r *LightningRPCServer) ListUnspent(ctx context.Context,
-	in *rpc_pb.ListUnspentRequest) (*rpc_pb.ListUnspentResponse, er.R) {
-
-	// Validate the confirmation arguments.
-	minConfs, maxConfs, err := lnrpc.ParseConfs(in.MinConfs, in.MaxConfs)
-	if err != nil {
-		return nil, err
-	}
-
-	// With our arguments validated, we'll query the internal wallet for
-	// the set of UTXOs that match our query.
-	//
-	// We'll acquire the global coin selection lock to ensure there aren't
-	// any other concurrent processes attempting to lock any UTXOs which may
-	// be shown available to us.
-	var utxos []*lnwallet.Utxo
-	err = r.server.cc.Wallet.WithCoinSelectLock(func() er.R {
-		utxos, err = r.server.cc.Wallet.ListUnspentWitness(
-			minConfs, maxConfs,
-		)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	rpcUtxos, err := lnrpc.MarshalUtxos(utxos, r.cfg.ActiveNetParams.Params)
-	if err != nil {
-		return nil, err
-	}
-
-	maxStr := ""
-	if maxConfs != math.MaxInt32 {
-		maxStr = " max=" + fmt.Sprintf("%d", maxConfs)
-	}
-
-	log.Debugf("[listunspent] min=%v%v, generated utxos: %v", minConfs,
-		maxStr, utxos)
-
-	return &rpc_pb.ListUnspentResponse{
-		Utxos: rpcUtxos,
-	}, nil
-}
-
 // EstimateFee handles a request for estimating the fee for sending a
 // transaction spending to multiple specified outputs in parallel.
 func (r *LightningRPCServer) EstimateFee(ctx context.Context,
@@ -4388,7 +4337,7 @@ func (r *LightningRPCServer) GetNodeInfo(ctx context.Context,
 // within the HTLC.
 //
 // TODO(roasbeef): should return a slice of routes in reality
-//  * create separate PR to send based on well formatted route
+//   - create separate PR to send based on well formatted route
 func (r *LightningRPCServer) QueryRoutes(ctx context.Context,
 	in *rpc_pb.QueryRoutesRequest) (*rpc_pb.QueryRoutesResponse, er.R) {
 	return r.routerBackend.QueryRoutes(ctx, in)
@@ -5636,67 +5585,6 @@ func (r *LightningRPCServer) FundingStateStep0(ctx context.Context,
 	// TODO(roasbeef): return resulting state? also add a method to query
 	// current state?
 	return &rpc_pb.FundingStateStepResp{}, nil
-}
-
-//ListLockUnspent
-func (r *LightningRPCServer) ListLockUnspent(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.ListLockUnspentResponse, er.R) {
-	list := r.wallet.LockedOutpoints()
-	lu := make(map[string][]*rpc_pb.OutPoint)
-	for _, l := range list {
-		lu[l.LockName] = append(lu[l.LockName], &rpc_pb.OutPoint{TxidStr: l.Txid, OutputIndex: l.Vout})
-	}
-	out := make([]*rpc_pb.LockedUtxos, 0, len(lu))
-	for name, ops := range lu {
-		out = append(out, &rpc_pb.LockedUtxos{
-			LockName: name,
-			Utxos:    ops,
-		})
-	}
-	return &rpc_pb.ListLockUnspentResponse{
-		LockedUnspents: out,
-	}, nil
-}
-
-//LockUnspent
-func (r *LightningRPCServer) LockUnspent(ctx context.Context, req *rpc_pb.LockUnspentRequest) (*rpc_pb.Null, er.R) {
-	w := r.wallet
-	lockname := "none"
-	if req.Lockname != "" {
-		lockname = req.Lockname
-	}
-	transactions := req.Transactions
-	for _, input := range transactions {
-		txHash, err := chainhash.NewHashFromStr(input.TxidStr)
-		if err != nil {
-			return nil, err
-		}
-		op := wire.OutPoint{Hash: *txHash, Index: uint32(input.OutputIndex)}
-		w.LockOutpoint(op, lockname)
-	}
-	return nil, nil
-}
-
-func (r *LightningRPCServer) UnlockUnspent(ctx context.Context, req *rpc_pb.LockUnspentRequest) (*rpc_pb.Null, er.R) {
-	w := r.wallet
-	if req.Lockname != "" {
-		w.ResetLockedOutpoints(&req.Lockname)
-	}
-	transactions := req.Transactions
-	for _, input := range transactions {
-		txHash, err := chainhash.NewHashFromStr(input.TxidStr)
-		if err != nil {
-			return nil, err
-		}
-		op := wire.OutPoint{Hash: *txHash, Index: uint32(input.OutputIndex)}
-		w.UnlockOutpoint(op)
-	}
-
-	return nil, nil
-}
-
-func (r *LightningRPCServer) UnlockAllUnspent(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.Null, er.R) {
-	r.wallet.ResetLockedOutpoints(nil)
-	return nil, nil
 }
 
 func (r *LightningRPCServer) GetNetworkStewardVote(ctx context.Context, _ *rpc_pb.Null) (*rpc_pb.GetNetworkStewardVoteResponse, er.R) {

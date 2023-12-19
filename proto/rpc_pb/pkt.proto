@@ -80,3 +80,11 @@ message WalletStats {
     int32 sync_to = 11;
     int32 birthday_block = 12;
 }
+
+message PublishTransactionRequest {
+	bytes tx = 1;
+}
+
+message PublishTransactionResponse {
+	string txn_hash = 1;
+}

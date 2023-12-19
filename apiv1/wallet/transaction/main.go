@@ -293,6 +293,27 @@ func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, e
 	}, nil
 }
 
+func (r *rpc) GetTransactions(in *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
+	return r.w.GetTransactions1(in)
+}
+
+func (r *rpc) publish(in *rpc_pb.PublishTransactionRequest) (*rpc_pb.PublishTransactionResponse, er.R) {
+	var msgTx wire.MsgTx
+
+	err := msgTx.Deserialize(bytes.NewReader(in.Tx))
+	if err != nil {
+		return nil, err
+	}
+
+	txidhash, err := r.w.ReliablyPublishTransaction(&msgTx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &rpc_pb.PublishTransactionResponse{
+		TxnHash: txidhash.String(),
+	}, nil
+}
+
 func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 	r := rpc{w: w}
 	apiv1.Endpoint(
@@ -365,4 +386,28 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		`,
 		r.decodeRawTransaction,
 	)
+	apiv1.Endpoint(
+		a,
+		"query",
+		`
+		List transactions from the wallet
+
+		Returns a list describing all the known transactions relevant to the wallet.
+		This includes confirmed (in the chain) transactions, and unconfirmed (mempool)
+		transactions, but not transactions which have been made with /wallet/transaction/create
+		but have not yet been broadcasted to the network.
+		This also does not include transactions that are not known to be relevant to the wallet,
+		if transactions are missing then a resync may be necessary.
+		`,
+		r.GetTransactions,
+	)
+	apiv1.Endpoint(
+		a,
+		"publish",
+		`
+		Publish a transaction to the network
+		`,
+		r.publish,
+	)
+
 }
