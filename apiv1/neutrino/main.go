@@ -17,16 +17,9 @@ type rpc struct {
 }
 
 func (r *rpc) bcasttransaction(in *rpc_pb.BcastTransactionRequest) (*rpc_pb.BcastTransactionResponse, er.R) {
-	log.Debugf("[0] BcastTransaction(): req.tx(%d): %s", len(in.Tx), string(in.Tx))
-	dst := make([]byte, hex.DecodedLen(len(in.Tx)))
-	_, errr := hex.Decode(dst, in.Tx)
-	if errr != nil {
-		return nil, er.E(errr)
-	}
-
 	var msgTx wire.MsgTx
 
-	err := msgTx.Deserialize(bytes.NewReader(dst))
+	err := msgTx.Deserialize(bytes.NewReader(in.Tx))
 	if err != nil {
 		return nil, err
 	}
