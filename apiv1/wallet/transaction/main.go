@@ -2,7 +2,6 @@ package transaction
 
 import (
 	"bytes"
-	"math"
 
 	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil"
@@ -12,6 +11,7 @@ import (
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
 	"github.com/pkt-cash/pktd/lnd/describetxn"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
+	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/waddrmgr"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
 	"github.com/pkt-cash/pktd/pktwallet/wallet/txrules"
@@ -185,17 +185,9 @@ func (r *rpc) getTransaction(req *rpc_pb.GetTransactionRequest) (*rpc_pb.GetTran
 
 func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.CreateTransactionResponse, er.R) {
 	toaddress := req.ToAddress
-	amount := req.Amount
 	fromaddresses := req.FromAddress
-
 	autolock := req.Autolock
 
-	if amount <= 0 {
-		return nil, er.New("amount must be positive")
-	}
-	if math.IsInf(amount, 1) {
-		amount = 0
-	}
 	minconf := int32(req.MinConf)
 	if minconf < 0 {
 		return nil, er.New("minconf must be positive")
@@ -205,12 +197,12 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 		inputminheight = int(req.InputMinHeight)
 	}
 	// Create map of address and amount pairs.
-	amt, err := btcutil.NewAmount(float64(amount))
+	amount, err := mkAmount(req.Amount)
 	if err != nil {
 		return nil, err
 	}
 	amounts := map[string]btcutil.Amount{
-		toaddress: amt,
+		toaddress: amount,
 	}
 
 	var vote *waddrmgr.NetworkStewardVote
@@ -253,17 +245,38 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 	}, nil
 }
 
+func (r *rpc) sendvote(req *rpc_pb.SendVoteRequest) (*rpc_pb.SendFromResponse, er.R) {
+	if voteFor, err := btcutil.DecodeAddress(req.VoteFor, r.w.ChainParams()); err != nil {
+		return nil, err
+	} else if voteForScript, err := txscript.PayToAddrScriptWithVote(voteFor, nil, nil); err != nil {
+		return nil, er.Errorf("cannot create voteFor txout script: %s", err)
+	} else if txr, err := prepareTxReq(r.w, map[string]btcutil.Amount{}, nil,
+		&[]string{req.FromAddress}, int32(req.MinConf), txrules.DefaultRelayFeePerKb,
+		wallet.SendModeBcasted, nil, int(req.MinHeight), int(req.MaxInputs)); err != nil {
+		return nil, err
+	} else if vscr, err := mkVoteScript(req.IsCandidate, voteForScript); err != nil {
+		return nil, err
+	} else {
+		txr.Outputs = []*wire.TxOut{{Value: 0, PkScript: vscr}}
+		if atx, err := sendTxRequest(r.w, txr); err != nil {
+			return nil, err
+		} else {
+			txHashStr := atx.Tx.TxHash().String()
+			log.Infof("Successfully sent vote transaction [%s]", log.Txid(txHashStr))
+			return &rpc_pb.SendFromResponse{
+				TxHash: txHashStr,
+			}, nil
+		}
+	}
+}
+
 func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, er.R) {
 	toaddress := req.ToAddress
-	amount := req.Amount
+	amount, err := mkAmount(req.Amount)
+	if err != nil {
+		return nil, err
+	}
 	fromaddresses := req.FromAddress
-
-	if amount <= 0 {
-		return nil, er.New("amount must be positive")
-	}
-	if math.IsInf(amount, 1) {
-		amount = 0
-	}
 	minconf := int32(req.MinConf)
 	if minconf < 0 {
 		return nil, er.New("minconf must be positive")
@@ -272,13 +285,8 @@ func (r *rpc) sendFrom(req *rpc_pb.SendFromRequest) (*rpc_pb.SendFromResponse, e
 	if req.MinHeight > 0 {
 		minheight = int(req.MinHeight)
 	}
-	// Create map of address and amount pairs.
-	amt, err := btcutil.NewAmount(float64(amount))
-	if err != nil {
-		return nil, err
-	}
 	amounts := map[string]btcutil.Amount{
-		toaddress: amt,
+		toaddress: amount,
 	}
 
 	maxinputs := int(req.MaxInputs)
@@ -350,6 +358,22 @@ func Register(a *apiv1.Apiv1, w *wallet.Wallet) {
 		from specific addresses.
 		`,
 		r.sendFrom,
+	)
+
+	apiv1.Endpoint(
+		a,
+		"sendvote",
+		`
+		Authors, signs, and sends a vote transaction to vote in the new Network Steward
+		election system. Vote transactions are not entirely free, they must pay normal
+		transaction fees like any other, so they must source coins from an input address
+		and make change.
+
+		Unlike normal transactions, vote transactions CANNOT contain more than one input
+		address. This address is considered to be the voter, and the vote is weighted based
+		on the number of coins this address has.
+		`,
+		r.sendvote,
 	)
 
 	// TODO(cjd): This is not written right, needs to be addressed

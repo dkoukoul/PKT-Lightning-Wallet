@@ -1,6 +1,8 @@
 package transaction
 
 import (
+	"math"
+
 	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -9,9 +11,12 @@ import (
 	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/pktwallet/waddrmgr"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
+	"github.com/pkt-cash/pktd/pktwallet/wallet/enough"
 	"github.com/pkt-cash/pktd/pktwallet/wallet/txauthor"
 	"github.com/pkt-cash/pktd/pktwallet/walletdb"
 	"github.com/pkt-cash/pktd/txscript"
+	"github.com/pkt-cash/pktd/txscript/opcode"
+	"github.com/pkt-cash/pktd/txscript/scriptbuilder"
 	"github.com/pkt-cash/pktd/wire"
 	"github.com/pkt-cash/pktd/wire/ruleerror"
 )
@@ -37,7 +42,16 @@ func sendPairs(w *wallet.Wallet, amounts map[string]btcutil.Amount,
 	return txHashStr, nil
 }
 
-func sendOutputs(
+func mkVoteScript(willingCandidate bool, voteFor []byte) ([]byte, er.R) {
+	buf := make([]byte, len(voteFor)+1)
+	if willingCandidate {
+		buf[0] = 0x01
+	}
+	copy(buf[1:], voteFor)
+	return scriptbuilder.NewScriptBuilder().AddOp(opcode.OP_RETURN).AddData(buf).Script()
+}
+
+func prepareTxReq(
 	w *wallet.Wallet,
 	amounts map[string]btcutil.Amount,
 	vote *waddrmgr.NetworkStewardVote,
@@ -48,7 +62,7 @@ func sendOutputs(
 	changeAddress *string,
 	inputMinHeight int,
 	maxInputs int,
-) (*txauthor.AuthoredTx, er.R) {
+) (*wallet.CreateTxReq, er.R) {
 	req := wallet.CreateTxReq{
 		Minconf:        minconf,
 		FeeSatPerKB:    feeSatPerKb,
@@ -88,13 +102,47 @@ func sendOutputs(
 		}
 		req.InputAddresses = addrs
 	}
-	tx, err := w.SendOutputs(req)
+	return &req, nil
+}
+
+func mkAmount(amtf float64) (btcutil.Amount, er.R) {
+	if amtf <= 0 {
+		return btcutil.Amount(0), er.New("amount must be positive")
+	} else if math.IsInf(amtf, 1) {
+		return btcutil.Amount(enough.SweepOutputAmount), nil
+	} else {
+		return btcutil.NewAmount(float64(amtf))
+	}
+}
+
+func sendOutputs(
+	w *wallet.Wallet,
+	amounts map[string]btcutil.Amount,
+	vote *waddrmgr.NetworkStewardVote,
+	fromAddressses *[]string,
+	minconf int32,
+	feeSatPerKb btcutil.Amount,
+	sendMode wallet.SendMode,
+	changeAddress *string,
+	inputMinHeight int,
+	maxInputs int,
+) (*txauthor.AuthoredTx, er.R) {
+	if req, err := prepareTxReq(w, amounts, vote, fromAddressses, minconf, feeSatPerKb,
+		sendMode, changeAddress, inputMinHeight, maxInputs); err != nil {
+		return nil, err
+	} else {
+		return sendTxRequest(w, req)
+	}
+}
+
+func sendTxRequest(w *wallet.Wallet, req *wallet.CreateTxReq) (*txauthor.AuthoredTx, er.R) {
+	tx, err := w.SendOutputs(*req)
 	if err != nil {
 		if ruleerror.ErrNegativeTxOutValue.Is(err) {
 			return nil, er.New("amount must be positive")
 		}
 		if waddrmgr.ErrLocked.Is(err) {
-			return nil, er.New("Enter the wallet passphrase with walletpassphrase first")
+			return nil, er.New("Enter the wallet passphrase with `./bin/pldctl unlock` first")
 		}
 		if btcjson.Err.Is(err) {
 			return nil, err

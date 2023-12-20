@@ -7,6 +7,8 @@ import (
 	"github.com/pkt-cash/pktd/wire"
 )
 
+const SweepOutputAmount = -1
+
 type IsEnough struct {
 	sweeping      bool
 	baseSize      int
@@ -55,7 +57,7 @@ func (ii *IsEnough) WellIsIt(inputCount int, segwit bool, amt btcutil.Amount) bo
 func GetSweepOutput(outs []*wire.TxOut) *wire.TxOut {
 	var sweepOutput *wire.TxOut
 	for _, out := range outs {
-		if out.Value == 0 {
+		if out.Value == SweepOutputAmount {
 			sweepOutput = out
 		}
 	}

@@ -4115,6 +4115,26 @@ message SendFromResponse{
     string tx_hash = 1;
 }
 
+message SendVoteRequest {
+    // The address to use for casting the vote
+    string from_address = 1;
+    // The address to vote for becoming Network Steward
+    // If this is the empty string then it will be considered that there is no vote
+    // Casting a non-vote is useful to withdraw a pervious vote without casting a new one.
+    string vote_for = 2;
+    // True if you want to candidate for possibly becoming the Network Steward.
+    bool is_candidate = 3;
+    // Do not source funds from any payment with less than this number of confirmations
+    // default 1 = anything which is in the blockchain at all
+    uint32 min_conf = 4;
+    // Do not source funds from any more inputs than this
+    // default 0 = no limit
+    uint32 max_inputs = 5;
+    // Do not source funds from any payments OLDER (lower block height) than this number
+    // default 0 = no limit
+    uint32 min_height = 6;
+}
+
 // The request to the util/transaction/decode endpoint
 message DecodeRawTransactionRequest{
     // The transaction in hex format (use this OR bin_tx)
