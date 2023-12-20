@@ -60,7 +60,8 @@ func getMasterHelp(pldServer string) er.R {
 		"",
 		"For a safer way to unlock your wallet without it being displayed",
 		"on the terminal you can use the "+bright("pldctl unlock"),
-		"or " + bright("pldctl unlock <wallet filename>")+" commands",
+		"or " + bright("pldctl unlock --timeout=<seconds>") + "to set a timeout,"+
+		"or " + bright("pldctl unlock --start_lightning")+" to start lightning",
 		"which will prompt you for your wallet password.",
 		"",
 		"In addition, each command corresponds to an RPC endpoint which",
