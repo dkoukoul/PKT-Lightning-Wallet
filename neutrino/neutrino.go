@@ -820,73 +820,16 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 	// peers in order to prevent it from becoming a public test network.
 	var newAddressFunc func() (net.Addr, er.R)
 	if s.chainParams.Net != chaincfg.SimNetParams.Net {
-		var recentAddressLock sync.Mutex
-		recentAddresses := make(map[string]time.Time)
 		newAddressFunc = func() (net.Addr, er.R) {
-
-			// Gather our set of currently connected peers to avoid
-			// connecting to them again.
-			connectedPeers := make(map[string]struct{})
-			for _, peer := range s.Peers() {
-				peerAddr := addrutil.NetAddressKey(peer.NA())
-				connectedPeers[peerAddr] = struct{}{}
-			}
-
-			for tries := 0; tries < 100; tries++ {
-				select {
-				case <-s.quit:
-					return nil, er.Errorf("Neutrino already shutting down...")
-				default:
-				}
-
-				addr := s.addrManager.GetAddress(relaxedMode.Load(), func(addr *addrmgr.KnownAddress) bool {
-					tries++
-					// Address will not be invalid, local or unroutable
-					// because addrmanager rejects those on addition.
-					// Just check that we don't already have an address
-					// in the same group so that we are not connecting
-					// to the same network segment at the expense of
-					// others.
-					key := addrutil.GroupKey(addr.NetAddress())
-					if s.OutboundGroupCount(key) != 0 {
-						return false
-					}
-					// only allow recent nodes (10mins) after we failed 10
-					// times
-					lastTime := s.addrManager.GetLastAttempt(addr.NetAddress())
-					if tries < 10 && time.Since(lastTime) < 10*time.Minute {
-						return false
-					}
-					// allow nondefault ports after 20 failed tries.
-					if tries < 20 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
-						s.chainParams.DefaultPort {
-						return false
-					}
-					return true
-				})
-				if addr == nil {
-					break
-				}
-
+			tries := 0
+			addr := s.addrManager.GetAddress(relaxedMode.Load(), func(addr *addrmgr.KnownAddress) bool {
+				tries++
 				// Ignore peers that we've already banned.
 				addrString := addrutil.NetAddressKey(addr.NetAddress())
 				if s.IsBanned(addrString) {
 					log.Debugf("Ignoring banned peer: %v", addrString)
-					continue
+					return false
 				}
-
-				// Skip any addresses that correspond to our set
-				// of currently connected peers.
-				if _, ok := connectedPeers[addrString]; ok {
-					log.Debugf("Skipping new connection from already connected peer %v", addrString)
-					continue
-				}
-
-				// The peer behind this address should support
-				// all of our required services.
-				// if addr.Services()&RequiredServices != RequiredServices {
-				// 	continue
-				// }
 
 				// Address will not be invalid, local or unroutable
 				// because addrmanager rejects those on addition.
@@ -896,37 +839,26 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 				// others.
 				key := addrutil.GroupKey(addr.NetAddress())
 				if s.OutboundGroupCount(key) != 0 {
-					continue
+					return false
 				}
-
-				// If for some reason, we're not able to get our local addrs (OS permissions)
-				// we'll pretend everything is ok.
-				if !localAddrs.Reachable(addr.NetAddress()) && localAddrs.IsWorking() {
-					// Unreachable address
-					continue
-				}
-
-				// allow nondefault ports after 50 failed tries.
-				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
-					s.chainParams.DefaultPort {
-					continue
-				}
-
-				// only allow recent nodes (10mins) after we failed 30
+				// only allow recent nodes (10mins) after we failed 10
 				// times
-				recentAddressLock.Lock()
-				t := recentAddresses[addrString]
-				recentAddresses[addrString] = time.Now()
-				recentAddressLock.Unlock()
-
-				if tries < 30 && time.Since(t) < 10*time.Minute {
-					continue
+				lastTime := s.addrManager.GetLastAttempt(addr.NetAddress())
+				if tries < 10 && time.Since(lastTime) < 10*time.Minute {
+					return false
 				}
-
-				return s.addrStringToNetAddr(addrString)
+				// allow nondefault ports after 20 failed tries.
+				if tries < 20 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
+					s.chainParams.DefaultPort {
+					return false
+				}
+				return true
+			})
+			if addr == nil {
+				return nil, er.New("no valid connect address")
 			}
-
-			return nil, er.New("no valid connect address")
+			addrString := addrutil.NetAddressKey(addr.NetAddress())
+			return s.addrStringToNetAddr(addrString)
 		}
 	}
 
