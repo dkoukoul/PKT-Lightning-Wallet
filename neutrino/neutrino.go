@@ -76,6 +76,9 @@ var (
 	// TargetOutbound is the number of outbound peers to target.
 	TargetOutbound = 12
 
+	// RelaxedEnoughPeers is the number of peers we need to have before we switch to relaxed search mode.
+	RelaxedEnoughPeers = 4
+
 	// MaxPeers is the maximum number of connections the client maintains.
 	MaxPeers = 125
 
@@ -795,7 +798,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 		for {
 			pc := len(s.Peers())
 			hasSyncPeer := s.blockManager.SyncPeer() != nil
-			enoughPeers := pc > (TargetOutbound - 2)
+			enoughPeers := pc >= RelaxedEnoughPeers || pc == TargetOutbound
 			if relaxedMode.Load() {
 				if !hasSyncPeer {
 					log.Infof("Lost sync peer, switch to fast peer search")
