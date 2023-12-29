@@ -2,7 +2,6 @@ package btcwallet
 
 import (
 	"bytes"
-	"encoding/hex"
 	"math"
 	"sync"
 	"time"
@@ -78,64 +77,16 @@ var _ lnwallet.BlockChainIO = (*BtcWallet)(nil)
 // New returns a new fully initialized instance of BtcWallet given a valid
 // configuration struct.
 func New(cfg Config, api *apiv1.Apiv1) (*BtcWallet, er.R) {
-	// Ensure the wallet exists or create it when the create flag is set.
-	netDir := NetworkDir(cfg.DataDir, cfg.NetParams)
-
-	// Create the key scope for the coin type being managed by this wallet.
-	chainKeyScope := waddrmgr.KeyScope{
-		Purpose: keychain.BIP0043Purpose,
-		Coin:    cfg.CoinType,
-	}
-
-	// Maybe the wallet has already been opened and unlocked by the
-	// WalletUnlocker. So if we get a non-nil value from the config,
-	// we assume everything is in order.
-	var wallet = cfg.Wallet
-	if wallet == nil {
-		// No ready wallet was passed, so try to open an existing one.
-		var pubPass []byte
-		if cfg.PublicPass == nil {
-			pubPass = defaultPubPassphrase
-		} else {
-			pubPass = cfg.PublicPass
-		}
-		loader := base.NewLoader(
-			cfg.NetParams, netDir, "wallet.db", cfg.NoFreelistSync,
-			cfg.RecoveryWindow,
-		)
-		walletExists, err := loader.WalletExists()
-		if err != nil {
-			return nil, err
-		}
-
-		if !walletExists {
-			// Wallet has never been created, perform initial
-			// set up.
-			wallet, err = loader.CreateNewWallet(
-				pubPass, cfg.PrivatePass, []byte(hex.EncodeToString(cfg.HdSeed)),
-				cfg.Birthday, nil, api,
-			)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			// Wallet has been created and been initialized at
-			// this point, open it along with all the required DB
-			// namespaces, and the DB itself.
-			wallet, err = loader.OpenExistingWallet(pubPass, false, api)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	return &BtcWallet{
-		cfg:           &cfg,
-		wallet:        wallet,
-		db:            wallet.Database(),
-		chain:         cfg.ChainSource,
-		netParams:     cfg.NetParams,
-		chainKeyScope: chainKeyScope,
+		cfg:       &cfg,
+		wallet:    cfg.Wallet,
+		db:        cfg.Wallet.Database(),
+		chain:     cfg.ChainSource,
+		netParams: cfg.NetParams,
+		chainKeyScope: waddrmgr.KeyScope{
+			Purpose: keychain.BIP0043Purpose,
+			Coin:    cfg.CoinType,
+		},
 	}, nil
 }
 
@@ -165,9 +116,6 @@ func (b *BtcWallet) Start() er.R {
 	// (1017, 1) exists within the internal waddrmgr. We'll need this in
 	// order to properly generate the keys required for signing various
 	// contracts.
-	if err := b.wallet.Unlock(b.cfg.PrivatePass, nil); err != nil {
-		return err
-	}
 	_, err := b.wallet.Manager.FetchScopedKeyManager(b.chainKeyScope)
 	if err != nil {
 		// If the scope hasn't yet been created (it wouldn't been
@@ -923,7 +871,7 @@ func (b *BtcWallet) GetRecoveryInfo() (bool, float64, er.R) {
 
 	// A zero value in RecoveryWindow indicates there is no trigger of
 	// recovery mode.
-	if b.cfg.RecoveryWindow == 0 {
+	if b.cfg.Wallet.RecoveryWindow() == 0 {
 		isRecoveryMode = false
 		return isRecoveryMode, progress, nil
 	}

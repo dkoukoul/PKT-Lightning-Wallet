@@ -117,7 +117,7 @@ func RegisterNew(a *apiv1.Apiv1) *SendTxStatus {
 	}
 	apiv1.Endpoint(
 		a,
-		"",
+		"sending",
 		`
 		Status update events of transactions which are being sent on chain
 		`,
@@ -134,7 +134,7 @@ func RegisterNew(a *apiv1.Apiv1) *SendTxStatus {
 	)
 	apiv1.Stream(
 		a,
-		"streaming",
+		"sending",
 		`
 		Status update events of transactions which are being sent on chain
 		`,

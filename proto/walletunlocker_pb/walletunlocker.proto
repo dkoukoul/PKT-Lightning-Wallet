@@ -67,7 +67,7 @@ service WalletUnlocker {
     UnlockWallet is used at startup of lnd to provide a password to unlock
     the wallet database.
     */
-    rpc UnlockWallet (UnlockWalletRequest) returns (UnlockWalletResponse);
+    //rpc UnlockWallet (UnlockWalletRequest) returns (UnlockWalletResponse);
 }
 
 message GenSeedRequest {
@@ -167,18 +167,29 @@ message UnlockWalletRequest {
     string wallet_passphrase = 1;
     /*
     If specified, will override wallet_passphrase, but is expressed in binary.
-    When using REST, this field must be encoded as base64.
+    When using REST/JSON, this field must be encoded as base64.
     */
     bytes wallet_passphrase_bin = 2;
 
     /*
-    recovery_window is an optional argument specifying the address lookahead
-    when restoring a wallet seed. The recovery window applies to each
-    individual branch of the BIP44 derivation paths. Supplying a recovery
-    window of zero indicates that no addresses should be recovered, such after
-    the first initialization of the wallet.
+    The amount number of seconds to wait before the wallet should auto-lock again.
+    If zero or less then the wallet will remain unlocked indefinitely.
     */
-    int32 recovery_window = 3;
+    int32 timeout_seconds = 3;
+}
+
+message StartLightningRequest {
+    /*
+    wallet_passphrase should be the current valid private passphrase for the daemon. This
+    will be required to decrypt on-disk material that the daemon requires to
+    function properly.
+    */
+    string wallet_passphrase = 1;
+    /*
+    If specified, will override wallet_passphrase, but is expressed in binary.
+    When using REST/JSON, this field must be encoded as base64.
+    */
+    bytes wallet_passphrase_bin = 2;
 
     /*
     channel_backups is an optional argument that allows clients to recover the
@@ -188,13 +199,5 @@ message UnlockWalletRequest {
     funds, lnd begin to carry out the data loss recovery protocol in order to
     recover the funds in each channel from a remote force closed transaction.
     */
-    rpc_pb.ChanBackupSnapshot channel_backups = 4;
-
-    /* 
-    wallet_name is optional when the user wants to load a specified wallet other 
-    than the default wallet.db
-    */
-    string wallet_name = 5;
-}
-message UnlockWalletResponse {
+    rpc_pb.ChanBackupSnapshot channel_backups = 3;
 }

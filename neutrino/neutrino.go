@@ -14,6 +14,7 @@ import (
 	"github.com/pkt-cash/pktd/btcutil/gcs"
 	"github.com/pkt-cash/pktd/btcutil/gcs/builder"
 	"github.com/pkt-cash/pktd/btcutil/lock"
+	"github.com/pkt-cash/pktd/btcutil/util/mailbox"
 	"github.com/pkt-cash/pktd/connmgr/banmgr"
 	"github.com/pkt-cash/pktd/lnd/lnrpc/apiv1"
 	"github.com/pkt-cash/pktd/pktlog/log"
@@ -723,8 +724,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 		banMgr:            *banmgr.New(&bmConfig),
 		knownTxns:         lock.NewGenMutex(make(map[string]time.Time), "ChainService.knownTxns"),
 		TxListener:        event.NewEmitter[wire.MsgTx]("ChainService.TxListener"),
-		sts: sendtxstatus.RegisterNew(apiv1.DefineCategory(napi, "sending",
-			"Status of transactions which are being sent out to the network")),
+		sts:               sendtxstatus.RegisterNew(napi),
 	}
 
 	s.dialer = func(na net.Addr) (net.Conn, er.R) {
@@ -783,9 +783,29 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 	s.blockManager = bm
 	s.blockSubscriptionMgr = blockntfns.NewSubscriptionManager(s.blockManager)
 
+	if MaxPeers < TargetOutbound {
+		TargetOutbound = MaxPeers
+	}
+
 	localAddrs := localaddrs.New()
+	relaxedMode := mailbox.NewMailbox(false)
 	go func() {
 		for {
+			pc := len(s.Peers())
+			hasSyncPeer := s.blockManager.SyncPeer() != nil
+			enoughPeers := pc > (TargetOutbound - 2)
+			if relaxedMode.Load() {
+				if !hasSyncPeer {
+					log.Infof("Lost sync peer, switch to fast peer search")
+				} else if !enoughPeers {
+					log.Infof("Only have [%d] peers, switch to fast peer search", pc)
+				}
+				relaxedMode.Store(false)
+			} else if hasSyncPeer && enoughPeers {
+				log.Infof("Found [%d] peers including sync peer, switching to relaxed peer search", pc)
+				relaxedMode.Store(true)
+			}
+
 			localAddrs.Referesh()
 			time.Sleep(time.Second * 30)
 		}
@@ -817,7 +837,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 				default:
 				}
 
-				addr := s.addrManager.GetAddress()
+				addr := s.addrManager.GetAddress(relaxedMode.Load())
 				if addr == nil {
 					break
 				}
@@ -895,9 +915,6 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 	}
 
 	// Create a connection manager.
-	if MaxPeers < TargetOutbound {
-		TargetOutbound = MaxPeers
-	}
 	cmgr, err := connmgr.New(cmgrCfg)
 	if err != nil {
 		return nil, err
