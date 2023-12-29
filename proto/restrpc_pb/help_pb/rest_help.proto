@@ -36,6 +36,11 @@ message EndpointSimple {
     string brief = 2;
 }
 
+// A response which is sent when querying /api/v1/openapi
+message OpenAPI{
+    string yaml = 1;
+}
+
 // The response which is sent back when querying the generic /api/v1/help
 message Category{
     // A description of the category of RPC endpoints
