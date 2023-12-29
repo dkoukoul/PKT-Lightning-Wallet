@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkt-cash/pktd/addrmgr/addrutil"
 	"github.com/pkt-cash/pktd/addrmgr/localaddrs"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/btcutil/event"
@@ -203,7 +204,7 @@ func (sp *ServerPeer) newestBlock() (*chainhash.Hash, int32, er.R) {
 // the peer to prevent sending duplicate addresses.
 func (sp *ServerPeer) addKnownAddresses(addresses []*wire.NetAddress) {
 	for _, na := range addresses {
-		sp.knownAddresses[addrmgr.NetAddressKey(na)] = struct{}{}
+		sp.knownAddresses[addrutil.NetAddressKey(na)] = struct{}{}
 	}
 }
 
@@ -730,11 +731,11 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 
 	s.dialer = func(na net.Addr) (net.Conn, er.R) {
 		log.Infof("Attempting connection to [%v]", log.IpAddr(na.String()))
-		addr, err := s.addrManager.DeserializeNetAddress(na.String(), 0)
+		_, err := s.addrManager.DeserializeNetAddress(na.String(), 0)
 		if err != nil {
 			return nil, er.Errorf("Unable to parse address [%v]", log.IpAddr(na.String()))
 		}
-		s.addrManager.Attempt(addr)
+
 		if cfg.Dialer != nil {
 			// If the dialler was specified, then we'll use that in place of the
 			// default net.Dial function.
@@ -827,7 +828,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 			// connecting to them again.
 			connectedPeers := make(map[string]struct{})
 			for _, peer := range s.Peers() {
-				peerAddr := addrmgr.NetAddressKey(peer.NA())
+				peerAddr := addrutil.NetAddressKey(peer.NA())
 				connectedPeers[peerAddr] = struct{}{}
 			}
 
@@ -838,13 +839,37 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 				default:
 				}
 
-				addr := s.addrManager.GetAddress(relaxedMode.Load())
+				addr := s.addrManager.GetAddress(relaxedMode.Load(), func(addr *addrmgr.KnownAddress) bool {
+					tries++
+					// Address will not be invalid, local or unroutable
+					// because addrmanager rejects those on addition.
+					// Just check that we don't already have an address
+					// in the same group so that we are not connecting
+					// to the same network segment at the expense of
+					// others.
+					key := addrutil.GroupKey(addr.NetAddress())
+					if s.OutboundGroupCount(key) != 0 {
+						return false
+					}
+					// only allow recent nodes (10mins) after we failed 10
+					// times
+					lastTime := s.addrManager.GetLastAttempt(addr.NetAddress())
+					if tries < 10 && time.Since(lastTime) < 10*time.Minute {
+						return false
+					}
+					// allow nondefault ports after 20 failed tries.
+					if tries < 20 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
+						s.chainParams.DefaultPort {
+						return false
+					}
+					return true
+				})
 				if addr == nil {
 					break
 				}
 
 				// Ignore peers that we've already banned.
-				addrString := addrmgr.NetAddressKey(addr.NetAddress())
+				addrString := addrutil.NetAddressKey(addr.NetAddress())
 				if s.IsBanned(addrString) {
 					log.Debugf("Ignoring banned peer: %v", addrString)
 					continue
@@ -869,7 +894,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 				// in the same group so that we are not connecting
 				// to the same network segment at the expense of
 				// others.
-				key := addrmgr.GroupKey(addr.NetAddress())
+				key := addrutil.GroupKey(addr.NetAddress())
 				if s.OutboundGroupCount(key) != 0 {
 					continue
 				}
@@ -1336,7 +1361,7 @@ func (s *ChainService) handleAddPeerMsg(state *peerState, sp *ServerPeer) bool {
 
 	// Add the new peer and start it.
 	log.Debugf("New peer %s", sp)
-	state.outboundGroups[addrmgr.GroupKey(sp.NA())]++
+	state.outboundGroups[addrutil.GroupKey(sp.NA())]++
 	if sp.persistent {
 		state.persistentPeers[sp.ID()] = sp
 	} else {
@@ -1369,7 +1394,7 @@ func (s *ChainService) handleDonePeerMsg(state *peerState, sp *ServerPeer) {
 	}
 	if _, ok := list[sp.ID()]; ok {
 		if !sp.Inbound() && sp.VersionKnown() {
-			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+			state.outboundGroups[addrutil.GroupKey(sp.NA())]--
 		}
 		if !sp.Inbound() && sp.connReq != nil {
 			if sp.persistent {
