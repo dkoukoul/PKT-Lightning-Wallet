@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkt-cash/pktd/addrmgr/addrutil"
 	"github.com/pkt-cash/pktd/addrmgr/localaddrs"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/btcutil/event"
@@ -74,6 +75,9 @@ var (
 
 	// TargetOutbound is the number of outbound peers to target.
 	TargetOutbound = 12
+
+	// RelaxedEnoughPeers is the number of peers we need to have before we switch to relaxed search mode.
+	RelaxedEnoughPeers = 4
 
 	// MaxPeers is the maximum number of connections the client maintains.
 	MaxPeers = 125
@@ -203,7 +207,7 @@ func (sp *ServerPeer) newestBlock() (*chainhash.Hash, int32, er.R) {
 // the peer to prevent sending duplicate addresses.
 func (sp *ServerPeer) addKnownAddresses(addresses []*wire.NetAddress) {
 	for _, na := range addresses {
-		sp.knownAddresses[addrmgr.NetAddressKey(na)] = struct{}{}
+		sp.knownAddresses[addrutil.NetAddressKey(na)] = struct{}{}
 	}
 }
 
@@ -729,11 +733,11 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 
 	s.dialer = func(na net.Addr) (net.Conn, er.R) {
 		log.Infof("Attempting connection to [%v]", log.IpAddr(na.String()))
-		addr, err := s.addrManager.DeserializeNetAddress(na.String(), 0)
+		_, err := s.addrManager.DeserializeNetAddress(na.String(), 0)
 		if err != nil {
 			return nil, er.Errorf("Unable to parse address [%v]", log.IpAddr(na.String()))
 		}
-		s.addrManager.Attempt(addr)
+
 		if cfg.Dialer != nil {
 			// If the dialler was specified, then we'll use that in place of the
 			// default net.Dial function.
@@ -793,7 +797,7 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 		for {
 			pc := len(s.Peers())
 			hasSyncPeer := s.blockManager.SyncPeer() != nil
-			enoughPeers := pc > (TargetOutbound - 2)
+			enoughPeers := pc >= RelaxedEnoughPeers || pc == TargetOutbound
 			if relaxedMode.Load() {
 				if !hasSyncPeer {
 					log.Infof("Lost sync peer, switch to fast peer search")
@@ -818,49 +822,16 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 	// peers in order to prevent it from becoming a public test network.
 	var newAddressFunc func() (net.Addr, er.R)
 	if s.chainParams.Net != chaincfg.SimNetParams.Net {
-		var recentAddressLock sync.Mutex
-		recentAddresses := make(map[string]time.Time)
 		newAddressFunc = func() (net.Addr, er.R) {
-
-			// Gather our set of currently connected peers to avoid
-			// connecting to them again.
-			connectedPeers := make(map[string]struct{})
-			for _, peer := range s.Peers() {
-				peerAddr := addrmgr.NetAddressKey(peer.NA())
-				connectedPeers[peerAddr] = struct{}{}
-			}
-
-			for tries := 0; tries < 100; tries++ {
-				select {
-				case <-s.quit:
-					return nil, er.Errorf("Neutrino already shutting down...")
-				default:
-				}
-
-				addr := s.addrManager.GetAddress(relaxedMode.Load())
-				if addr == nil {
-					break
-				}
-
+			tries := 0
+			addr := s.addrManager.GetAddress(relaxedMode.Load(), func(addr *addrmgr.KnownAddress) bool {
+				tries++
 				// Ignore peers that we've already banned.
-				addrString := addrmgr.NetAddressKey(addr.NetAddress())
+				addrString := addrutil.NetAddressKey(addr.NetAddress())
 				if s.IsBanned(addrString) {
 					log.Debugf("Ignoring banned peer: %v", addrString)
-					continue
+					return false
 				}
-
-				// Skip any addresses that correspond to our set
-				// of currently connected peers.
-				if _, ok := connectedPeers[addrString]; ok {
-					log.Debugf("Skipping new connection from already connected peer %v", addrString)
-					continue
-				}
-
-				// The peer behind this address should support
-				// all of our required services.
-				// if addr.Services()&RequiredServices != RequiredServices {
-				// 	continue
-				// }
 
 				// Address will not be invalid, local or unroutable
 				// because addrmanager rejects those on addition.
@@ -868,39 +839,28 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 				// in the same group so that we are not connecting
 				// to the same network segment at the expense of
 				// others.
-				key := addrmgr.GroupKey(addr.NetAddress())
+				key := addrutil.GroupKey(addr.NetAddress())
 				if s.OutboundGroupCount(key) != 0 {
-					continue
+					return false
 				}
-
-				// If for some reason, we're not able to get our local addrs (OS permissions)
-				// we'll pretend everything is ok.
-				if !localAddrs.Reachable(addr.NetAddress()) && localAddrs.IsWorking() {
-					// Unreachable address
-					continue
-				}
-
-				// allow nondefault ports after 50 failed tries.
-				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
-					s.chainParams.DefaultPort {
-					continue
-				}
-
-				// only allow recent nodes (10mins) after we failed 30
+				// only allow recent nodes (10mins) after we failed 10
 				// times
-				recentAddressLock.Lock()
-				t := recentAddresses[addrString]
-				recentAddresses[addrString] = time.Now()
-				recentAddressLock.Unlock()
-
-				if tries < 30 && time.Since(t) < 10*time.Minute {
-					continue
+				lastTime := s.addrManager.GetLastAttempt(addr.NetAddress())
+				if tries < 10 && time.Since(lastTime) < 10*time.Minute {
+					return false
 				}
-
-				return s.addrStringToNetAddr(addrString)
+				// allow nondefault ports after 20 failed tries.
+				if tries < 20 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
+					s.chainParams.DefaultPort {
+					return false
+				}
+				return true
+			})
+			if addr == nil {
+				return nil, er.New("no valid connect address")
 			}
-
-			return nil, er.New("no valid connect address")
+			addrString := addrutil.NetAddressKey(addr.NetAddress())
+			return s.addrStringToNetAddr(addrString)
 		}
 	}
 
@@ -1335,7 +1295,7 @@ func (s *ChainService) handleAddPeerMsg(state *peerState, sp *ServerPeer) bool {
 
 	// Add the new peer and start it.
 	log.Debugf("New peer %s", sp)
-	state.outboundGroups[addrmgr.GroupKey(sp.NA())]++
+	state.outboundGroups[addrutil.GroupKey(sp.NA())]++
 	if sp.persistent {
 		state.persistentPeers[sp.ID()] = sp
 	} else {
@@ -1368,7 +1328,7 @@ func (s *ChainService) handleDonePeerMsg(state *peerState, sp *ServerPeer) {
 	}
 	if _, ok := list[sp.ID()]; ok {
 		if !sp.Inbound() && sp.VersionKnown() {
-			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+			state.outboundGroups[addrutil.GroupKey(sp.NA())]--
 		}
 		if !sp.Inbound() && sp.connReq != nil {
 			if sp.persistent {

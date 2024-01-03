@@ -2,10 +2,11 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package addrmgr
+package addrutil
 
 import (
 	"net"
+	"strconv"
 
 	"github.com/pkt-cash/pktd/wire"
 )
@@ -218,4 +219,88 @@ func IsRoutable(na *wire.NetAddress) bool {
 		IsRFC3927(na) || IsRFC4862(na) || IsRFC3849(na) ||
 		IsRFC4843(na) || IsRFC5737(na) || IsRFC6598(na) ||
 		IsLocal(na) || (IsRFC4193(na) && !IsCjdns(na)))
+}
+
+// GroupKey returns a string representing the network group an address is part
+// of.  This is the /16 for IPv4, the /32 (/36 for he.net) for IPv6, the string
+// "local" for a local address, and the string "unroutable" for an
+// unroutable address.
+func GroupKey(na *wire.NetAddress) string {
+	if IsLocal(na) {
+		return "local"
+	}
+	if !IsRoutable(na) {
+		return "unroutable"
+	}
+	if IsIPv4(na) {
+		return na.IP.Mask(net.CIDRMask(16, 32)).String()
+	}
+	if IsRFC6145(na) || IsRFC6052(na) {
+		// last four bytes are the ip address
+		ip := na.IP[12:16]
+		return ip.Mask(net.CIDRMask(16, 32)).String()
+	}
+
+	if IsRFC3964(na) {
+		ip := na.IP[2:6]
+		return ip.Mask(net.CIDRMask(16, 32)).String()
+
+	}
+	if IsRFC4380(na) {
+		// teredo tunnels have the last 4 bytes as the v4 address XOR
+		// 0xff.
+		ip := net.IP(make([]byte, 4))
+		for i, byte := range na.IP[12:16] {
+			ip[i] = byte ^ 0xff
+		}
+		return ip.Mask(net.CIDRMask(16, 32)).String()
+	}
+
+	// OK, so now we know ourselves to be a IPv6 address.
+	// bitcoind uses /32 for everything, except for Hurricane Electric's
+	// (he.net) IP range, which it uses /36 for.
+	bits := 32
+	if heNet.Contains(na.IP) {
+		bits = 36
+	}
+
+	return na.IP.Mask(net.CIDRMask(bits, 128)).String()
+}
+
+func Reachable(localAddr, remoteAddr *wire.NetAddress) bool {
+	// For our purposes, loopback addresses should be assumed unreachable
+	// we're PROBABLY not trying to connect to ourselves
+	if IsLocal(localAddr) || IsLocal(remoteAddr) {
+		return false
+	}
+
+	if IsIPv4(localAddr) != IsIPv4(remoteAddr) {
+		return false
+	}
+	if IsIPv4(remoteAddr) {
+		// We consider all NAT local IPv4 to be inaccessible
+		// because otherwise we risk trying to connect to 10.0.0.0/8
+		// addresses which were gossipped to us by far away nodes.
+		return IsRoutable(remoteAddr)
+	}
+	if IsCjdns(localAddr) != IsCjdns(remoteAddr) {
+		return false
+	}
+	if IsYggdrasil(localAddr) != IsYggdrasil(remoteAddr) {
+		return false
+	}
+	return IsRoutable(localAddr) && IsRoutable(remoteAddr)
+}
+
+// ipString returns a string for the ip from the provided NetAddress.
+func ipString(na *wire.NetAddress) string {
+	return na.IP.String()
+}
+
+// NetAddressKey returns a string key in the form of ip:port for IPv4 addresses
+// or [ip]:port for IPv6 addresses.
+func NetAddressKey(na *wire.NetAddress) string {
+	port := strconv.FormatUint(uint64(na.Port), 10)
+
+	return net.JoinHostPort(ipString(na), port)
 }

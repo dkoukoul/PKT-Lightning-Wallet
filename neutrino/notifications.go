@@ -7,9 +7,9 @@
 package neutrino
 
 import (
+	"github.com/pkt-cash/pktd/addrmgr/addrutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
 
-	"github.com/pkt-cash/pktd/addrmgr"
 	"github.com/pkt-cash/pktd/connmgr"
 )
 
@@ -112,7 +112,7 @@ func (s *ChainService) handleQuery(state *peerState, querymsg interface{}) {
 		found := disconnectPeer(state.persistentPeers, msg.cmp, func(sp *ServerPeer) {
 			// Keep group counts ok since we remove from
 			// the list now.
-			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+			state.outboundGroups[addrutil.GroupKey(sp.NA())]--
 		})
 
 		if found {
@@ -143,7 +143,7 @@ func (s *ChainService) handleQuery(state *peerState, querymsg interface{}) {
 		found := disconnectPeer(state.outboundPeers, msg.cmp, func(sp *ServerPeer) {
 			// Keep group counts ok since we remove from
 			// the list now.
-			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+			state.outboundGroups[addrutil.GroupKey(sp.NA())]--
 		})
 		if found {
 			// If there are multiple outbound connections to the same
@@ -151,7 +151,7 @@ func (s *ChainService) handleQuery(state *peerState, querymsg interface{}) {
 			// peers are found.
 			for found {
 				found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *ServerPeer) {
-					state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+					state.outboundGroups[addrutil.GroupKey(sp.NA())]--
 				})
 			}
 			msg.reply <- nil
