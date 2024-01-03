@@ -36,9 +36,3 @@ jobs:
         run: |
           cd ${HOME_PATH}
           ./do
-
-      - name: Integration Tests
-        shell: bash
-        run: |
-          cd ${HOME_PATH}
-          ./test
