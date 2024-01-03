@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkt-cash/pktd/apiv1/lightning"
 	"github.com/pkt-cash/pktd/btcec"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -64,7 +65,6 @@ import (
 	"github.com/pkt-cash/pktd/lnd/sweep"
 	"github.com/pkt-cash/pktd/lnd/ticker"
 	"github.com/pkt-cash/pktd/lnd/tor"
-	"github.com/pkt-cash/pktd/lnd/walletunlocker"
 	"github.com/pkt-cash/pktd/lnd/watchtower/wtclient"
 	"github.com/pkt-cash/pktd/lnd/watchtower/wtpolicy"
 	"github.com/pkt-cash/pktd/lnd/watchtower/wtserver"
@@ -274,7 +274,7 @@ type server struct {
 
 	// chansToRestore is the set of channels that upon starting, the server
 	// should attempt to restore/recover.
-	chansToRestore walletunlocker.ChannelsToRecover
+	chansToRestore lightning.ChannelsToRecover
 
 	// chanSubSwapper is a sub-system that will ensure our on-disk channel
 	// backups are consistent at all times. It interacts with the
@@ -342,14 +342,13 @@ func noiseDial(idKey keychain.SingleKeyECDH,
 	}
 }
 
-
 // newServer creates a new instance of the server which is to listen using the
 // passed listener address.
 func newServer(cfg *Config, listenAddrs []net.Addr,
 	localChanDB, remoteChanDB *channeldb.DB,
 	towerClientDB wtclient.DB, cc *chainreg.ChainControl,
 	nodeKeyDesc *keychain.KeyDescriptor,
-	chansToRestore walletunlocker.ChannelsToRecover,
+	chansToRestore lightning.ChannelsToRecover,
 	chanPredicate chanacceptor.ChannelAcceptor,
 	torController *tor.Controller) (*server, er.R) {
 
@@ -1524,14 +1523,13 @@ func (s *server) Start() er.R {
 				return
 			}
 		}
-		
+
 		if err := s.chanSubSwapper.Start(); err != nil {
 			startErr = err
 			return
 		}
 
 		s.connMgr.Start()
-
 
 		// With all the relevant sub-systems started, we'll now attempt
 		// to establish persistent connections to our direct channel

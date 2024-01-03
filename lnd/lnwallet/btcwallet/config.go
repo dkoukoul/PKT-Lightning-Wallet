@@ -2,7 +2,6 @@ package btcwallet
 
 import (
 	"path/filepath"
-	"time"
 
 	"github.com/pkt-cash/pktd/chaincfg"
 	"github.com/pkt-cash/pktd/neutrino"
@@ -35,28 +34,6 @@ type Config struct {
 	// LogDir is the name of the directory which should be used to store
 	// generated log files.
 	LogDir string
-
-	// PrivatePass is the private password to the underlying btcwallet
-	// instance. Without this, the wallet cannot be decrypted and operated.
-	PrivatePass []byte
-
-	// PublicPass is the optional public password to btcwallet. This is
-	// optionally used to encrypt public material such as public keys and
-	// scripts.
-	PublicPass []byte
-
-	// HdSeed is an optional seed to feed into the wallet. If this is
-	// unspecified, a new seed will be generated.
-	HdSeed []byte
-
-	// Birthday specifies the time at which this wallet was initially
-	// created. It is used to bound rescans for used addresses.
-	Birthday time.Time
-
-	// RecoveryWindow specifies the address look-ahead for which to scan
-	// when restoring a wallet. The recovery window will apply to all
-	// default BIP44 derivation paths.
-	RecoveryWindow uint32
 
 	// ChainSource is the primary chain interface. This is used to operate
 	// the wallet and do things such as rescanning, sending transactions,

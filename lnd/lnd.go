@@ -18,8 +18,11 @@ import (
 	"strings"
 	"time"
 
+	apifunctions "github.com/pkt-cash/pktd/apiv1"
+	"github.com/pkt-cash/pktd/apiv1/lightning"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/btcutil/util/mailbox"
 	"github.com/pkt-cash/pktd/chaincfg/chainhash"
 	"github.com/pkt-cash/pktd/cjdns"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
@@ -37,7 +40,6 @@ import (
 	"github.com/pkt-cash/pktd/lnd/lnwallet"
 	"github.com/pkt-cash/pktd/lnd/signal"
 	"github.com/pkt-cash/pktd/lnd/tor"
-	"github.com/pkt-cash/pktd/lnd/walletunlocker"
 	"github.com/pkt-cash/pktd/lnd/watchtower"
 	"github.com/pkt-cash/pktd/lnd/watchtower/wtdb"
 	"github.com/pkt-cash/pktd/neutrino"
@@ -76,13 +78,8 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		strings.ToTitle(cfg.registeredChains.PrimaryChain().String()),
 		network,
 	)
-	
-	// Bring up the REST handler immediately
+
 	api, apiRouter := apiv1.New()
-	restContext := RpcContext{}
-	restContext.RegisterFunctions(api)
-	//restHandler := restrpc.RestHandlers(&restContext)
-	//restrpc.RestHandlersHelp(restHandler)
 
 	for _, restEndpoint := range cfg.RESTListeners {
 		lis, err := lncfg.ListenOnAddress(restEndpoint)
@@ -125,6 +122,74 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		defer pprof.StopCPUProfile()
 	}
 
+	neutrinoCS, neutrinoCleanUp, err := initNeutrinoBackend(
+		cfg, cfg.PktDir, api.Category("neutrino"),
+	)
+	if err != nil {
+		err := er.Errorf("unable to initialize neutrino "+
+			"backend: %v", err)
+		log.Error(err)
+		return err
+	}
+	defer neutrinoCleanUp()
+
+	// Set up meta Service pass neutrino for getinfo and changepassword
+	// call init later to pass arguments needed for changepassword
+	metaService := lnrpc.NewMetaService(neutrinoCS)
+
+	//Parse filename from --wallet or default
+	walletPath, walletFilename := walletFilename(cfg)
+
+	//Initialize the metaservice with params needed for change password
+	metaService.Init(!cfg.SyncFreelist, cfg.ActiveNetParams.Params, walletFilename, walletPath)
+
+	wallet, err := openWallet(cfg, api)
+	if err != nil {
+		return err
+	}
+	wallet.SynchronizeRPC(neutrinoCS)
+
+	initLightning := mailbox.NewMailbox[*lightning.StartLightning](nil)
+
+	apifunctions.Register(
+		api,
+		wallet,
+		neutrinoCS,
+		&initLightning,
+	)
+
+	startLightning := initLightning.AwaitUpdate()
+	return startupLightning(
+		cfg,
+		shutdownChan,
+		api,
+		neutrinoCS,
+		wallet,
+		startLightning,
+		metaService,
+	)
+}
+func startupLightning(
+	cfg *Config,
+	shutdownChan <-chan struct{},
+	api *apiv1.Apiv1,
+	neutrinoCS *neutrino.ChainService,
+	wallet *wallet.Wallet,
+	startLightning *lightning.StartLightning,
+	metaService *lnrpc.MetaService,
+) er.R {
+
+	// Before starting the wallet, we'll create and start our Neutrino
+	// light client instance, if enabled, in order to allow it to sync
+	// while the rest of the daemon continues startup.
+	mainChain := cfg.Bitcoin
+	if cfg.registeredChains.PrimaryChain() == chainreg.LitecoinChain {
+		mainChain = cfg.Litecoin
+	}
+	if cfg.registeredChains.PrimaryChain() == chainreg.PktChain {
+		mainChain = cfg.Pkt
+	}
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -139,86 +204,6 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	}
 
 	defer cleanUp()
-
-	// Before starting the wallet, we'll create and start our Neutrino
-	// light client instance, if enabled, in order to allow it to sync
-	// while the rest of the daemon continues startup.
-	mainChain := cfg.Bitcoin
-	if cfg.registeredChains.PrimaryChain() == chainreg.LitecoinChain {
-		mainChain = cfg.Litecoin
-	}
-	if cfg.registeredChains.PrimaryChain() == chainreg.PktChain {
-		mainChain = cfg.Pkt
-	}
-
-	neutrinoCS, neutrinoCleanUp, err := initNeutrinoBackend(
-		cfg, cfg.PktDir, api.Category("neutrino"),
-	)
-	if err != nil {
-		err := er.Errorf("unable to initialize neutrino "+
-			"backend: %v", err)
-		log.Error(err)
-		return err
-	}
-	defer neutrinoCleanUp()
-	restContext.MaybeNeutrino = neutrinoCS
-
-	var (
-		walletInitParams WalletUnlockParams
-		privateWalletPw  = lnwallet.DefaultPrivatePassphrase
-		publicWalletPw   = lnwallet.DefaultPublicPassphrase
-	)
-
-	// If the user didn't request a seed, then we'll manually assume a
-	// wallet birthday of now, as otherwise the seed would've specified
-	// this information.
-	walletInitParams.Birthday = time.Now()
-
-	// Set up meta Service pass neutrino for getinfo and changepassword
-	// call init later to pass arguments needed for changepassword
-	metaService := lnrpc.NewMetaService(neutrinoCS)
-
-	//Parse filename from --wallet or default
-	walletPath, walletFilename := WalletFilename(cfg.WalletFile)
-	//Get default pkt dir ~/.pktwallet/pkt
-	if walletPath == "" {
-		walletPath = cfg.PktDir
-	}
-	//Initialize the metaservice with params needed for change password
-	metaService.Init(!cfg.SyncFreelist, cfg.ActiveNetParams.Params, walletFilename, walletPath)
-
-	restContext.MaybeMetaService = metaService
-	// We wait until the user provides a password over RPC. In case lnd is
-	// started with the --noseedbackup flag, we use the default password
-	// for wallet encryption.
-
-	if !cfg.NoSeedBackup {
-		params, err := waitForWalletPassword(cfg, &restContext, api)
-		if err != nil {
-			err := er.Errorf("unable to set up wallet password "+
-				"listeners: %v", err)
-			log.Error(err)
-			return err
-		}
-
-		walletInitParams = *params
-		privateWalletPw = walletInitParams.Password
-		publicWalletPw = walletInitParams.Password
-		//Pass wallet to metaservice for getinfo2
-		metaService.SetWallet(walletInitParams.Wallet)
-		restContext.MaybeWallet = walletInitParams.Wallet
-		defer func() {
-			if err := walletInitParams.UnloadWallet(); err != nil {
-				log.Errorf("Could not unload wallet: %v", err)
-			}
-		}()
-
-		if walletInitParams.RecoveryWindow > 0 {
-			log.Infof("Wallet recovery mode enabled with "+
-				"address lookahead of %d addresses",
-				walletInitParams.RecoveryWindow)
-		}
-	}
 
 	// With the information parsed from the configuration, create valid
 	// instances of the pertinent interfaces required to operate the
@@ -236,11 +221,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		NeutrinoMode:                cfg.NeutrinoMode,
 		LocalChanDB:                 localChanDB,
 		RemoteChanDB:                remoteChanDB,
-		PrivateWalletPw:             privateWalletPw,
-		PublicWalletPw:              publicWalletPw,
-		Birthday:                    walletInitParams.Birthday,
-		RecoveryWindow:              walletInitParams.RecoveryWindow,
-		Wallet:                      walletInitParams.Wallet,
+		Wallet:                      wallet,
 		NeutrinoCS:                  neutrinoCS,
 		ActiveNetParams:             cfg.ActiveNetParams,
 		FeeURL:                      cfg.FeeURL,
@@ -399,7 +380,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	// connections.
 	server, err := newServer(
 		cfg, cfg.Listeners, localChanDB, remoteChanDB, towerClientDB,
-		activeChainControl, &idKeyDesc, walletInitParams.ChansToRestore,
+		activeChainControl, &idKeyDesc, startLightning.ChannelsToRestore,
 		chainedAcceptor, torController,
 	)
 	if err != nil {
@@ -408,6 +389,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		return err
 	}
 
+	var maybeWtClient *wtclientrpc.WatchtowerClient
 	if server.towerClient != nil {
 		wtclient, err := wtclientrpc.New(&wtclientrpc.Config{
 			Active:   true,
@@ -417,7 +399,7 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		if err != nil {
 			return err
 		}
-		restContext.MaybeWatchTowerClient = wtclient
+		maybeWtClient = wtclient
 	}
 
 	// Set up an autopilot manager from the current config. This will be
@@ -461,7 +443,6 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 		log.Error(err)
 		return err
 	}
-	restContext.MaybeRpcServer = rpcServer
 	if err := rpcServer.Start(); err != nil {
 		err := er.Errorf("unable to start RPC server: %v", err)
 		log.Error(err)
@@ -473,11 +454,17 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	if err != nil {
 		return err
 	}
-	restContext.MaybeRouterServer = routerRpc
 
-	// We have brought up the RPC server so we can now cause the wallet/create
-	// or wallet/unlock to complete.
-	close(walletInitParams.Complete)
+	restContext := RpcContext{
+		MaybeMetaService:      metaService,
+		MaybeRouterServer:     routerRpc,
+		MaybeRpcServer:        rpcServer,
+		MaybeWatchTowerClient: maybeWtClient,
+	}
+	restContext.RegisterFunctions(api)
+
+	// We have brought up the RPC server so we can now cause the lightning/start to complete.
+	startLightning.StartupComplete.Store(true)
 
 	// If we're not in regtest or simnet mode, We'll wait until we're fully
 	// synced to continue the start up of the remainder of the daemon. This
@@ -579,163 +566,24 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	return nil
 }
 
-// WalletUnlockParams holds the variables used to parameterize the unlocking of
-// lnd's wallet after it has already been created.
-type WalletUnlockParams struct {
-	// Password is the public and private wallet passphrase.
-	Password []byte
-
-	// Birthday specifies the approximate time that this wallet was created.
-	// This is used to bound any rescans on startup.
-	Birthday time.Time
-
-	// RecoveryWindow specifies the address lookahead when entering recovery
-	// mode. A recovery will be attempted if this value is non-zero.
-	RecoveryWindow uint32
-
-	// Wallet is the loaded and unlocked Wallet. This is returned
-	// from the unlocker service to avoid it being unlocked twice (once in
-	// the unlocker service to check if the password is correct and again
-	// later when lnd actually uses it). Because unlocking involves scrypt
-	// which is resource intensive, we want to avoid doing it twice.
-	Wallet *wallet.Wallet
-
-	// ChansToRestore a set of static channel backups that should be
-	// restored before the main server instance starts up.
-	ChansToRestore walletunlocker.ChannelsToRecover
-
-	// UnloadWallet is a function for unloading the wallet, which should
-	// be called on shutdown.
-	UnloadWallet func() er.R
-
-	Complete chan struct{}
-}
-
-// waitForWalletPassword will spin up gRPC and REST endpoints for the
-// WalletUnlocker server, and block until a password is provided by
-// the user to this RPC server.
-func waitForWalletPassword(
-	cfg *Config,
-	restContext *RpcContext,
-	api *apiv1.Apiv1,
-) (*WalletUnlockParams, er.R) {
-
-	chainConfig := cfg.Bitcoin
-	if cfg.registeredChains.PrimaryChain() == chainreg.LitecoinChain {
-		chainConfig = cfg.Litecoin
-	} else if cfg.registeredChains.PrimaryChain() == chainreg.PktChain {
-		chainConfig = cfg.Pkt
-	}
-
-	//Parse filename from --wallet or default
-	walletPath, walletFilename := WalletFilename(cfg.WalletFile)
-	//Get default pkt dir ~/.pktwallet/pkt
-	if walletPath == "" {
-		walletPath = cfg.PktDir
-	}
-	pwService := walletunlocker.New(
-		chainConfig.ChainDir, cfg.ActiveNetParams.Params,
-		!cfg.SyncFreelist, walletPath, walletFilename, api,
+func openWallet(cfg *Config, api *apiv1.Apiv1) (*wallet.Wallet, er.R) {
+	walletPath, walletFilename := walletFilename(cfg)
+	loader := wallet.NewLoader(
+		cfg.ActiveNetParams.Params,
+		walletPath,
+		walletFilename,
+		!cfg.SyncFreelist,
+		256,
 	)
-	restContext.MaybeWalletUnlocker = pwService
-
-	// Wait for user to provide the password.
-	log.Infof("\n\nWaiting for: `./bin/pldctl unlock` to complete lightning startup\n\n")
-
-	// We currently don't distinguish between getting a password to be used
-	// for creation or unlocking, as a new wallet db will be created if
-	// none exists when creating the chain control.
-	select {
-
-	// The wallet is being created for the first time, we'll check to see
-	// if the user provided any entropy for seed creation. If so, then
-	// we'll create the wallet early to load the seed.
-	case initMsg := <-pwService.InitMsgs:
-		password := initMsg.Passphrase
-		cipherSeed := initMsg.Seed
-		recoveryWindow := initMsg.RecoveryWindow
-
-		if initMsg.WalletName != "" {
-			walletFilename = initMsg.WalletName
-		}
-
-		loader := wallet.NewLoader(
-			cfg.ActiveNetParams.Params, walletPath, walletFilename, !cfg.SyncFreelist,
-			recoveryWindow,
-		)
-
-		newWallet, err := loader.CreateNewWallet(
-			[]byte(wallet.InsecurePubPassphrase), password,
-			initMsg.LegacySeed, time.Time{}, cipherSeed, api,
-		)
-		if err != nil {
-			// Don't leave the file open in case the new wallet
-			// could not be created for whatever reason.
-			if err := loader.UnloadWallet(); err != nil {
-				log.Errorf("Could not unload new "+
-					"wallet: %v", err)
-			}
-			return nil, err
-		}
-
-		// For new wallets, the ResetWalletTransactions flag is a no-op.
-		if cfg.ResetWalletTransactions {
-			log.Warnf("Ignoring reset-wallet-transactions " +
-				"flag for new wallet as it has no effect")
-		}
-
-		birthday := time.Time{}
-		if cipherSeed != nil {
-			birthday = cipherSeed.Birthday()
-		}
-
-		return &WalletUnlockParams{
-			Password:       password,
-			Birthday:       birthday,
-			RecoveryWindow: recoveryWindow,
-			Wallet:         newWallet,
-			ChansToRestore: initMsg.ChanBackups,
-			UnloadWallet:   loader.UnloadWallet,
-			Complete:       initMsg.Complete,
-		}, nil
-
-	// The wallet has already been created in the past, and is simply being
-	// unlocked. So we'll just return these passphrases.
-	case unlockMsg := <-pwService.UnlockMsgs:
-		// Resetting the transactions is something the user likely only
-		// wants to do once so we add a prominent warning to the log to
-		// remind the user to turn off the setting again after
-		// successful completion.
-		if cfg.ResetWalletTransactions {
-			log.Warnf("Dropping all transaction history from " +
-				"on-chain wallet. Remember to disable " +
-				"reset-wallet-transactions flag for next " +
-				"start of pld")
-
-			err := wallet.DropTransactionHistory(
-				unlockMsg.Wallet.Database(), true,
-			)
-			if err != nil {
-				if err := unlockMsg.UnloadWallet(); err != nil {
-					log.Errorf("Could not unload "+
-						"wallet: %v", err)
-				}
-				return nil, err
-			}
-		}
-
-		return &WalletUnlockParams{
-			Password:       unlockMsg.Passphrase,
-			RecoveryWindow: unlockMsg.RecoveryWindow,
-			Wallet:         unlockMsg.Wallet,
-			ChansToRestore: unlockMsg.ChanBackups,
-			UnloadWallet:   unlockMsg.UnloadWallet,
-			Complete:       unlockMsg.Complete,
-		}, nil
-
-	case <-signal.ShutdownChannel():
-		return nil, er.Errorf("shutting down")
+	wallet, err := loader.OpenExistingWallet(
+		[]byte(wallet.InsecurePubPassphrase),
+		false,
+		api,
+	)
+	if err != nil {
+		return nil, err
 	}
+	return wallet, nil
 }
 
 // initializeDatabases extracts the current databases that we'll use for normal
@@ -981,39 +829,39 @@ func parseHeaderStateAssertion(state string) (*headerfs.FilterHeader, er.R) {
 
 // Parse wallet filename,
 // return path and filename when it starts with /
-func WalletFilename(walletName string) (string, string) {
-	if strings.HasSuffix(walletName, ".db") {
-		if strings.HasPrefix(walletName, "/") {
-			dir, filename := filepath.Split(walletName)
+func walletFilename(cfg *Config) (string, string) {
+	if strings.HasSuffix(cfg.WalletFile, ".db") {
+		if strings.HasPrefix(cfg.WalletFile, "/") {
+			dir, filename := filepath.Split(cfg.WalletFile)
 			return dir, filename
 		}
-		return "", walletName
+		return cfg.PktDir, cfg.WalletFile
 	} else {
-		return "", fmt.Sprintf("wallet_%s.db", walletName)
+		return cfg.PktDir, fmt.Sprintf("wallet_%s.db", cfg.WalletFile)
 	}
 }
 
 func (rs *LightningRPCServer) LndListPeers(ctx context.Context,
-	in *rpc_pb.ListPeersRequest) (*rpc_pb.ListPeersResponse, er.R)  {
-		return rs.ListPeers(ctx, in)
+	in *rpc_pb.ListPeersRequest) (*rpc_pb.ListPeersResponse, er.R) {
+	return rs.ListPeers(ctx, in)
 }
 
 func (rs *LightningRPCServer) LndConnectPeer(ctx context.Context,
 	in *rpc_pb.ConnectPeerRequest) (*rpc_pb.Null, er.R) {
-		return rs.ConnectPeer(ctx, in)
+	return rs.ConnectPeer(ctx, in)
 }
 
-func (rs *LightningRPCServer) LndIdentityPubkey() string { 
-		return hex.EncodeToString(rs.server.identityECDH.PubKey().SerializeCompressed())
+func (rs *LightningRPCServer) LndIdentityPubkey() string {
+	return hex.EncodeToString(rs.server.identityECDH.PubKey().SerializeCompressed())
 }
 
 func (rs *LightningRPCServer) LndAddInvoice(ctx context.Context,
 	in *rpc_pb.Invoice) (*rpc_pb.AddInvoiceResponse, er.R) {
-		return rs.AddInvoice(ctx, in)
+	return rs.AddInvoice(ctx, in)
 }
 
 func (rs *LightningRPCServer) LndPeerPort() int {
-		addr := rs.cfg.Listeners[0]
-		tcpAddr, _ := addr.(*net.TCPAddr)
-		return tcpAddr.Port
+	addr := rs.cfg.Listeners[0]
+	tcpAddr, _ := addr.(*net.TCPAddr)
+	return tcpAddr.Port
 }

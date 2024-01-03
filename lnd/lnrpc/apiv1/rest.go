@@ -242,7 +242,7 @@ func (a *Apiv1) cat(path string, description *string) *Apiv1 {
 			}
 		} else {
 			if _, ok := (*cats)[path]; ok {
-				log.Warnf("Creating category [%s] but it already exists")
+				log.Warnf("Creating category [%s] but it already exists", path)
 			}
 			(*cats)[path] = trimSplit(*description)
 		}
@@ -373,6 +373,60 @@ type epInfo struct {
 	category  string
 	name      string
 	helpPath  string
+}
+
+func (a *Apiv1) openApiHelp() (*help_pb.OpenAPI, er.R) {
+	out := []string{}
+	tabs := ""
+	txt := func(s string, args ...interface{}) {
+		out = append(out, tabs+fmt.Sprintf(s, args...))
+	}
+	tab := func(f func()) {
+		t := tabs
+		tabs = tabs + "\t"
+		f()
+		tabs = t
+	}
+	txt("openapi: 3.0.3")
+	txt("info:")
+	tab(func() {
+		txt("title: PLD - The PKT Lightning Daemon REST interface")
+		txt("description: PKT Lightning Deamon REST API.")
+		txt("version: 0.1.1")
+	})
+	txt("paths:")
+	tab(func() {
+		a.internal.funcs.R().In(func(t *map[string]*endpoint) er.R {
+			for _, ep := range *t {
+				txt(_api_v1_ + ep.path + ":")
+				tab(func() {
+					fakeReq := ep.mkReq()
+					if _, ok := fakeReq.(*rpc_pb.Null); ok {
+						// Null input means we GET, otherwise we post
+						txt("get:")
+					} else {
+						txt("post:")
+					}
+					tab(func() {
+						txt("summary: %s", util.Iff(
+							len(ep.helpRes.Description) > 0,
+							func() string { return ep.helpRes.Description[0] },
+							"<UNDEFINED>",
+						))
+						txt("description: |-")
+						tab(func() {
+							for _, line := range ep.helpRes.Description {
+								txt(line)
+							}
+						})
+					})
+				})
+			}
+			return nil
+		})
+	})
+	txt("")
+	return &help_pb.OpenAPI{Yaml: strings.Join(out, "\n")}, nil
 }
 
 func (a *Apiv1) masterHelp() (*help_pb.Category, er.R) {
@@ -519,6 +573,17 @@ func New() (*Apiv1, *mux.Router) {
 		`,
 		func(_ *rpc_pb.Null) (*help_pb.Category, er.R) {
 			return out.masterHelp()
+		},
+	)
+
+	Endpoint(
+		&out,
+		"openapi",
+		`
+		Output OpenAPI YAML content which represents the API of this node.
+		`,
+		func(_ *rpc_pb.Null) (*help_pb.OpenAPI, er.R) {
+			return out.openApiHelp()
 		},
 	)
 
