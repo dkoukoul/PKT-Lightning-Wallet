@@ -60,7 +60,7 @@ func toPm[T proto.Message]() proto.Message {
 	return reflect.New(typeOf[T]().Elem()).Interface().(proto.Message)
 }
 
-//	convert	pkthelp.type to REST help proto struct
+// convert	pkthelp.type to REST help proto struct
 func convertHelpType(t pkthelp.Type) *help_pb.Type {
 	resultType := &help_pb.Type{
 		Name:        t.Name,
@@ -375,6 +375,41 @@ type epInfo struct {
 	helpPath  string
 }
 
+func schemaExists(a string, list []string) bool {
+	a = "    " + a + ":"
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	if a == "rpc_pb_Null" {
+		log.Debugf("schemaExists: %s not found in %v", a, list)
+	}
+	return false
+}
+
+func getOpenapiType(protoType string) string {
+	switch protoType {
+	case "int32":
+		return "integer"
+	case "int64":
+		return "integer"
+	case "uint32":
+		return "integer"
+	case "uint64":
+		return "integer"
+	case "bool":
+		return "boolean"
+	case "[]byte":
+		return "string"
+	case "string":
+		return "string"
+	default:
+		return protoType
+	}
+	return ""
+}
+
 func (a *Apiv1) openApiHelp() (*help_pb.OpenAPI, er.R) {
 	out := []string{}
 	tabs := ""
@@ -383,7 +418,8 @@ func (a *Apiv1) openApiHelp() (*help_pb.OpenAPI, er.R) {
 	}
 	tab := func(f func()) {
 		t := tabs
-		tabs = tabs + "\t"
+		// for yaml we want space identation
+		tabs = tabs + "  "
 		f()
 		tabs = t
 	}
@@ -408,6 +444,12 @@ func (a *Apiv1) openApiHelp() (*help_pb.OpenAPI, er.R) {
 						txt("post:")
 					}
 					tab(func() {
+						txt("tags:")
+						tab(func() {
+							parts := strings.Split(ep.path, "/")
+							tag := parts[0]
+							txt("- " + strings.Title(tag))
+						})
 						txt("summary: %s", util.Iff(
 							len(ep.helpRes.Description) > 0,
 							func() string { return ep.helpRes.Description[0] },
@@ -419,10 +461,114 @@ func (a *Apiv1) openApiHelp() (*help_pb.OpenAPI, er.R) {
 								txt(line)
 							}
 						})
+						//TODO
+						txt("operationId: %s", util.Iff(
+							len(ep.helpRes.Description) > 0,
+							func() string { return ep.helpRes.Description[0] },
+							"<UNDEFINED>",
+						))
+						txt("requestBody:")
+						tab(func() {
+							txt("content:")
+							tab(func() {
+								txt("application/json:")
+								tab(func() {
+									txt("schema:")
+									tab(func() {
+										txt("$ref: '#/components/schemas/%s'", ep.helpRes.Request.Name)
+									})
+								})
+							})
+						})
+						txt("responses:")
+						tab(func() {
+							txt("200:")
+							tab(func() {
+								txt("description: Successful operation")
+								txt("content:")
+								tab(func() {
+									txt("application/json:")
+									tab(func() {
+										txt("schema:")
+										tab(func() {
+											txt("$ref: '#/components/schemas/%s'", ep.helpRes.Response.Name)
+										})
+									})
+								})
+							})
+						})
+						//TODO: add error responses
+						tab(func() {
+							txt("400:")
+							tab(func() {
+								txt("description: Invalid input")
+							})
+						})
 					})
 				})
 			}
 			return nil
+		})
+	})
+	txt("components:")
+	tab(func() {
+		txt("schemas:")
+		tab(func() {
+			a.internal.funcs.R().In(func(t *map[string]*endpoint) er.R {
+				for _, ep := range *t {
+					if !schemaExists(ep.helpRes.Request.Name, out) {
+						txt(ep.helpRes.Request.Name + ":")
+						tab(func() {
+							txt("type: object")
+							if len(ep.helpRes.Request.Fields) > 0 {
+								txt("properties:")
+								tab(func() {
+									for _, field := range ep.helpRes.Request.Fields {
+										txt(field.Name + ":")
+										tab(func() {
+											txt("type: %s", getOpenapiType(field.Type.Name))
+											if len(field.Description) > 0 {
+												txt("description: |-")
+												tab(func() {
+													for _, line := range field.Description {
+														txt(line)
+													}
+												})
+											}
+										})
+									}
+								})
+							}
+						})
+					}
+					if !schemaExists(ep.helpRes.Response.Name, out) {
+						txt(ep.helpRes.Response.Name + ":")
+						tab(func() {
+							txt("type: object")
+							if len(ep.helpRes.Response.Fields) > 0 {
+								txt("properties:")
+								tab(func() {
+									for _, field := range ep.helpRes.Response.Fields {
+										txt(field.Name + ":")
+										tab(func() {
+											txt("type: %s", getOpenapiType(field.Type.Name))
+											if len(field.Description) > 0 {
+												txt("description: |-")
+												tab(func() {
+													for _, line := range field.Description {
+														txt(line)
+													}
+												})
+											}
+										})
+									}
+								})
+							}
+						})
+					}
+				}
+				return nil
+			})
 		})
 	})
 	txt("")
