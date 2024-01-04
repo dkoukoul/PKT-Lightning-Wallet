@@ -7,6 +7,7 @@ package lnd
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,6 +59,17 @@ func Main(cfg *Config, shutdownChan <-chan struct{}) er.R {
 	// Show version at startup.
 	log.Infof("Version: %s debuglevel=%s",
 		version.Version(), cfg.DebugLevel)
+
+	if _, err := os.Stat(filepath.Join(walletFilename(cfg))); errors.Is(err, os.ErrNotExist) {
+		log.Errorf("Wallet file not found")
+		// Let the log flush
+		time.Sleep(time.Millisecond * 30)
+		fmt.Printf("\nThere was no wallet found with the path [%s]\n",
+			filepath.Join(walletFilename(cfg)))
+		fmt.Printf("If you are setting up pld for the first time, " +
+			"try `./bin/pld --create` to make a new wallet\n\n")
+		return nil
+	}
 
 	var network string
 	switch {
