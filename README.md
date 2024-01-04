@@ -30,8 +30,8 @@ To build this wallet, you need [golang](https://go.dev/dl/) and the
 Using `git`, clone the project from the repository:
 
 ```bash
-$ git clone https://github.com/pkt-cash/pktd
-$ cd pktd
+$ git clone https://github.com/pkt-cash/PKT-Lightning-Wallet
+$ cd PKT-Lightning-Wallet
 $ ./do
 ```
 
@@ -127,6 +127,11 @@ called "personal", which corrisponds to a file called "wallet_personal.db" in th
 ./bin/pld --create --wallet personal
 ```
 
+### Migrating from pktwallet
+
+If you're upgrading from pktwallet to pld, you don't need to do anything special. Pld uses the
+same wallet location and on-disk format as pktwallet.
+
 ## Statup
 
 To launch pld, just run:
@@ -189,7 +194,7 @@ Everything that can be done using pldctl can also be done programmatically using
 Below is an example of querying the help for the `wallet/transaction/create` endpoint.
 
 ```
-user@armee PKT-Lightning-Wallet % curl http://localhost:8080/api/v1/help/wallet/transaction/create
+user@armee PKT-Lightning-Wallet % curl http://localhost:53199/api/v1/help/wallet/transaction/create
 {
         "path": "/api/v1/wallet/transaction/create",
         "description": [

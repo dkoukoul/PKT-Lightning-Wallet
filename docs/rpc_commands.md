@@ -1,8 +1,8 @@
 # List of RPC commands
 
-The base URL is `http://localhost:8080/api/v1`.
+The base URL is `http://localhost:53199/api/v1`.
 
-To access help, use `http://localhost:8080/api/v1/help` or for each command separately, e.g., `http://localhost:8080/api/v1/help/lightning/channel`.
+To access help, use `http://localhost:53199/api/v1/help` or for each command separately, e.g., `http://localhost:53199/api/v1/help/lightning/channel`.
 
 ## lightning
 ### Channels

@@ -32,10 +32,10 @@ func main() {
 
 func main1() er.R {
 	var showRequestPayload bool
-	pldServer := "http://localhost:8080"
+	pldServer := "http://localhost:53199"
 
 	//	parse command line arguments
-	flag.StringVar(&pldServer, "pld_server", "http://localhost:8080", "set the pld server URL")
+	flag.StringVar(&pldServer, "pld_server", "http://localhost:53199", "set the pld server URL")
 	flag.BoolVar(&showRequestPayload, "show_req_payload", false, "show the request payload before invoke the pld command")
 
 	flag.Parse()
@@ -52,7 +52,7 @@ func main1() er.R {
 	//	one or more arguments means the help + command
 	//		or command to be executed followed by arguments to build request payload
 	command := flag.Args()[0]
-		isHelp := false
+	isHelp := false
 
 	//	if the user wants help on a command
 	if command == "help" {

@@ -25,7 +25,7 @@ type testScenario struct {
 // In the future we should create a full test harness for bringing up a pld so that we can run fully inclusive tests.
 func _TestFormatRequestPayload(t *testing.T) {
 
-	pldServer := "http://localhost:8080"
+	pldServer := "http://localhost:53199"
 
 	var testCases []testScenario = []testScenario{
 		//	test error handling

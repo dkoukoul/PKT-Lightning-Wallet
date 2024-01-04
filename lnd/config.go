@@ -53,7 +53,7 @@ const (
 	defaultGraphSubDirname = "graph"
 	defaultTowerSubDirname = "watchtower"
 	defaultLogLevel        = "info"
-	defaultRESTPort        = 8080
+	defaultRESTPort        = 53199
 	defaultPeerPort        = 9735
 
 	defaultNoSeedBackup                  = false

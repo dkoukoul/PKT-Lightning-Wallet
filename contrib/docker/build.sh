@@ -27,7 +27,7 @@ if which docker; then
 	echo "$ docker image ls"
 	echo ""
 	echo "Run this Docker image"
-	echo "$ docker run -d -p 8080:8080 ${DOCKER_IMAGE_NAME}"
+	echo "$ docker run -d -p 53199:53199 ${DOCKER_IMAGE_NAME}"
 else
 	echo "docker not installed or not reachable"
 	exit 1
