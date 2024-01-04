@@ -1249,6 +1249,7 @@ func createWallet(cfg *Config) er.R {
 	} else if err := jsoniter.Unmarshal(bytes, &setupCfg); err != nil {
 		return er.E(err)
 	} else {
+		log.SetLogLevels("off")
 		if setupCfg.Passphrase != nil {
 			privPass = []byte(*setupCfg.Passphrase)
 		}
