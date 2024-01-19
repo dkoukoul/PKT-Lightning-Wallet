@@ -801,10 +801,11 @@ func NewChainService(cfg Config, napi *apiv1.Apiv1) (*ChainService, er.R) {
 			if relaxedMode.Load() {
 				if !hasSyncPeer {
 					log.Infof("Lost sync peer, switch to fast peer search")
+					relaxedMode.Store(false)
 				} else if !enoughPeers {
 					log.Infof("Only have [%d] peers, switch to fast peer search", pc)
+					relaxedMode.Store(false)
 				}
-				relaxedMode.Store(false)
 			} else if hasSyncPeer && enoughPeers {
 				log.Infof("Found [%d] peers including sync peer, switching to relaxed peer search", pc)
 				relaxedMode.Store(true)
