@@ -4008,8 +4008,12 @@ message CreateTransactionRequest{
     // unusable),
     string autolock = 10;
 
-    // Whether to sign the transaction.
-    bool sign = 11;
+    reserved 11;
+
+    // Whether to not sign the transaction. By default the transaction is created signed. If you do not sign it
+    // then you almost certainly need to specify electrum_format in order to have the available data to sign the
+    // transaction offline.
+    bool unsigned = 12;
 }
 
 message CreateTransactionResponse{

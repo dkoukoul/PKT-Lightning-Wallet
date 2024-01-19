@@ -212,7 +212,7 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 	}
 	maxinputs := int(req.MaxInputs)
 	sendmode := wallet.SendModeSigned
-	if !req.Sign {
+	if req.Unsigned {
 		sendmode = wallet.SendModeUnsigned
 	}
 	tx, err := sendOutputs(r.w, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, sendmode, &req.ChangeAddress, inputminheight, maxinputs)
