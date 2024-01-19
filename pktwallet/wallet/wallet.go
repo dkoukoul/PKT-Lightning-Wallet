@@ -2329,7 +2329,7 @@ func (w *Wallet) SendOutputs(txr CreateTxReq) (*txauthor.AuthoredTx, er.R) {
 	// rules.
 	hasSweep := false
 	for _, output := range txr.Outputs {
-		if output.Value == 0 {
+		if output.Value < 0 {
 			if hasSweep {
 				return nil, er.New("Multiple outputs with zero value, a single output with zero value " +
 					"will sweep the address(es) to this output, multiple zero value outputs are ambiguous")

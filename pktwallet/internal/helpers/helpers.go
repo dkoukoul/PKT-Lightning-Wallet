@@ -14,7 +14,9 @@ import (
 // SumOutputValues sums up the list of TxOuts and returns an Amount.
 func SumOutputValues(outputs []*wire.TxOut) (totalOutput btcutil.Amount) {
 	for _, txOut := range outputs {
-		totalOutput += btcutil.Amount(txOut.Value)
+		if txOut.Value > 0 {
+			totalOutput += btcutil.Amount(txOut.Value)
+		}
 	}
 	return totalOutput
 }

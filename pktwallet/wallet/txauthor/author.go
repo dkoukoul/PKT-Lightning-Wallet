@@ -158,6 +158,12 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb btcutil.Amount,
 			changeIndex = l
 		}
 
+		for _, out := range outputs {
+			if out.Value < 0 {
+				return nil, er.Errorf("Transaction output with negative amount")
+			}
+		}
+
 		return &AuthoredTx{
 			Tx:          unsignedTransaction,
 			TotalInput:  inputAmount,

@@ -1,8 +1,6 @@
 package transaction
 
 import (
-	"math"
-
 	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
@@ -108,7 +106,7 @@ func prepareTxReq(
 func mkAmount(amtf float64) (btcutil.Amount, er.R) {
 	if amtf <= 0 {
 		return btcutil.Amount(0), er.New("amount must be positive")
-	} else if math.IsInf(amtf, 1) {
+	} else if amtf >= 6e9 {
 		return btcutil.Amount(enough.SweepOutputAmount), nil
 	} else {
 		return btcutil.NewAmount(float64(amtf))

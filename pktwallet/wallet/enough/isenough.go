@@ -22,7 +22,9 @@ func MkIsEnough(txOutputs []*wire.TxOut, feePerKb btcutil.Amount) IsEnough {
 	sweepOutput := GetSweepOutput(txOutputs)
 	needed := btcutil.Amount(0)
 	for _, o := range txOutputs {
-		needed += btcutil.Amount(o.Value)
+		if o.Value > 0 {
+			needed += btcutil.Amount(o.Value)
+		}
 	}
 	// We're going to start with the base tx size for fee estimation
 	// Then we'll take the size with 1 input in order to be able to estimate fee per input
