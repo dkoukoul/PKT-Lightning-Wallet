@@ -29,6 +29,10 @@ import (
 )
 
 // Maximum number of inputs which will be included in a transaction
+// The limit for transaction "weight" is 400000. Currently this wallet does not know
+// how to prevent the txn weight (or even size) from going out of bounds, so the limit
+// is imposed on number of inputs. A transaction with even 2000 inputs has a weight of
+// 543139, so 1460 is pretty much on the line of what can be accepted.
 const MaxInputsPerTx = 1460
 
 // Maximum number of inputs which can be included in a transaction if there is
