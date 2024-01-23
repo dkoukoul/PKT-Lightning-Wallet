@@ -7,6 +7,7 @@ package wallet
 import (
 	"time"
 
+	"github.com/pkt-cash/pktd/blockchain/votecompute/db"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
@@ -102,14 +103,20 @@ func (w *Wallet) GetVote(addr btcutil.Address) (*rpc_pb.AddressVoteInfo, er.R) {
 		txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
 		if v, err := wtxmgr.FetchAddressNsVote(txmgrNs, addr); err != nil {
 			return err
-		} else if v != nil && bs.Height < v.ExpirationBlock {
+		} else if v != nil {
+			expirationBlock := v.VoteBlock + db.VoteExpirationBlocks
+			if bs.Height >= expirationBlock {
+				return nil
+			}
+			blocksToGo := expirationBlock - bs.Height
+			expSec := int64(w.chainParams.TargetTimePerBlock.Seconds()) * int64(blocksToGo)
 			out = &rpc_pb.AddressVoteInfo{
 				IsCandidate:            v.IsCandidate,
 				VoteFor:                v.VoteFor,
 				VoteTxid:               v.VoteTxid,
 				VoteBlock:              v.VoteBlock,
-				ExpirationBlock:        v.ExpirationBlock,
-				EstimatedExpirationSec: v.EstimatedExpirationSec,
+				ExpirationBlock:        expirationBlock,
+				EstimatedExpirationSec: expSec,
 			}
 			return nil
 		}

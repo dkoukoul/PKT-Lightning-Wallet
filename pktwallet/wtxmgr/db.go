@@ -891,17 +891,13 @@ func deleteRawUnminedCredit(ns walletdb.ReadWriteBucket, k []byte) er.R {
 
 type DbNsVote2 struct {
 	// True this the address has indicated it's candidacy in the most recent vote
-	IsCandidate bool `protobuf:"varint,1,opt,name=is_candidate,json=isCandidate,proto3" json:"is_candidate,omitempty"`
+	IsCandidate bool `json:"is_candidate,omitempty"`
 	// Who the address voted for, empty string if they voted for themselves or nobody
-	VoteFor string `protobuf:"bytes,2,opt,name=vote_for,json=voteFor,proto3" json:"vote_for,omitempty"`
+	VoteFor string `json:"vote_for,omitempty"`
 	// The transaction ID of the vote
-	VoteTxid string `protobuf:"bytes,3,opt,name=vote_txid,json=voteTxid,proto3" json:"vote_txid,omitempty"`
+	VoteTxid string `json:"vote_txid,omitempty"`
 	// The number of the block where this address voted
-	VoteBlock int32 `protobuf:"varint,4,opt,name=vote_block,json=voteBlock,proto3" json:"vote_block,omitempty"`
-	// The block at which the vote will expire
-	ExpirationBlock int32 `protobuf:"varint,5,opt,name=expiration_block,json=expirationBlock,proto3" json:"expiration_block,omitempty"`
-	// The estimated date/time when the vote will expire (as seconds since the epoch)
-	EstimatedExpirationSec int64 `protobuf:"varint,6,opt,name=estimated_expiration_sec,json=estimatedExpirationSec,proto3" json:"estimated_expiration_sec,omitempty"`
+	VoteBlock int32 `json:"vote_block,omitempty"`
 }
 
 func FetchAddressNsVote(

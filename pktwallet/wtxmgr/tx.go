@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/pkt-cash/pktd/blockchain/votecompute/db"
 	"github.com/pkt-cash/pktd/blockchain/votecompute/votes"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/lnd/clock"
@@ -208,14 +207,11 @@ func getVote(rec *TxRecord, block *BlockMeta, chainParams *chaincfg.Params) *DbN
 			continue
 		}
 		if v := votes.GetVote(output.PkScript); v != nil {
-			expSec := block.Time.Add(chainParams.TargetTimePerBlock * db.VoteExpirationBlocks)
 			return &DbNsVote2{
-				IsCandidate:            v.VoterIsWillingCandidate,
-				VoteFor:                txscript.PkScriptToAddress(v.VoteForPkScript, chainParams).String(),
-				VoteTxid:               rec.Hash.String(),
-				VoteBlock:              block.Height,
-				ExpirationBlock:        block.Height + db.VoteExpirationBlocks,
-				EstimatedExpirationSec: expSec.Unix(),
+				IsCandidate: v.VoterIsWillingCandidate,
+				VoteFor:     txscript.PkScriptToAddress(v.VoteForPkScript, chainParams).String(),
+				VoteTxid:    rec.Hash.String(),
+				VoteBlock:   block.Height,
 			}
 		}
 	}
@@ -300,7 +296,7 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 				if vote.IsCandidate {
 					candidate = "+CANDIDATE"
 				}
-				log.Infof("🗳️ [%s%s] from [%s] tx [%s] @ [%s]",
+				log.Infof("🗳️ %s [%s%s] from [%s] tx [%s] @ [%s]",
 					log.GreenBg("Confirmed vote"),
 					log.Address(vote.VoteFor),
 					candidate,
