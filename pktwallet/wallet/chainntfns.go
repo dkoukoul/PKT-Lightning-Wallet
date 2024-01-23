@@ -109,7 +109,8 @@ func (w *Wallet) GetVote(addr btcutil.Address) (*rpc_pb.AddressVoteInfo, er.R) {
 				return nil
 			}
 			blocksToGo := expirationBlock - bs.Height
-			expSec := int64(w.chainParams.TargetTimePerBlock.Seconds()) * int64(blocksToGo)
+			expSec := bs.Timestamp.Unix() +
+				int64(w.chainParams.TargetTimePerBlock.Seconds())*int64(blocksToGo)
 			out = &rpc_pb.AddressVoteInfo{
 				IsCandidate:            v.IsCandidate,
 				VoteFor:                v.VoteFor,
