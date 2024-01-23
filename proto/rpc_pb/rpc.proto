@@ -2414,6 +2414,21 @@ message GetAddressBalancesRequest {
     bool showzerobalance = 2;
 }
 
+message AddressVoteInfo {
+    // True this the address has indicated it's candidacy in the most recent vote
+    bool is_candidate = 1;
+    // Who the address voted for, empty string if they voted for themselves or nobody
+    string vote_for = 2;
+    // The transaction ID of the vote
+    string vote_txid = 3;
+    // The number of the block where this address voted
+    int32 vote_block = 4;
+    // The block at which the vote will expire
+    int32 expiration_block = 5;
+    // The estimated date/time when the vote will expire (as seconds since the epoch)
+    int64 estimated_expiration_sec = 6;
+}
+
 message GetAddressBalancesResponseAddr{
     // The address which has this balance
     string address = 1;
@@ -2444,6 +2459,9 @@ message GetAddressBalancesResponseAddr{
 
     // The number of transaction outputs which make up the balance
     int32 outputcount = 10;
+
+    // If there is an active vote by this address, the vote information.
+    optional AddressVoteInfo vote = 11;
 }
 message GetAddressBalancesResponse{
     repeated GetAddressBalancesResponseAddr addrs = 1;

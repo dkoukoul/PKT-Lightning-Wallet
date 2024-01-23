@@ -81,6 +81,10 @@ func (r *rpc) balances(
 	} else {
 		resp := make([]*rpc_pb.GetAddressBalancesResponseAddr, 0, len(adb))
 		for k, v := range adb {
+			vote, err := r.w.GetVote(k)
+			if err != nil {
+				return nil, err
+			}
 			resp = append(resp, &rpc_pb.GetAddressBalancesResponseAddr{
 				Address:         k.EncodeAddress(),
 				Total:           v.Total.ToBTC(),
@@ -92,6 +96,7 @@ func (r *rpc) balances(
 				Unconfirmed:     v.Unconfirmed.ToBTC(),
 				Sunconfirmed:    int64(v.Unconfirmed),
 				Outputcount:     v.OutputCount,
+				Vote:            vote,
 			})
 		}
 		return &rpc_pb.GetAddressBalancesResponse{Addrs: resp}, nil

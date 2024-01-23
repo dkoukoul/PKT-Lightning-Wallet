@@ -10,6 +10,8 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/pkt-cash/pktd/blockchain/votecompute/db"
+	"github.com/pkt-cash/pktd/blockchain/votecompute/votes"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/lnd/clock"
 	"github.com/pkt-cash/pktd/pktlog/log"
@@ -200,6 +202,26 @@ func Create(ns walletdb.ReadWriteBucket) er.R {
 	return createStore(ns)
 }
 
+func getVote(rec *TxRecord, block *BlockMeta, chainParams *chaincfg.Params) *DbNsVote2 {
+	for _, output := range rec.MsgTx.TxOut {
+		if output.Value != 0 {
+			continue
+		}
+		if v := votes.GetVote(output.PkScript); v != nil {
+			expSec := block.Time.Add(chainParams.TargetTimePerBlock * db.VoteExpirationBlocks)
+			return &DbNsVote2{
+				IsCandidate:            v.VoterIsWillingCandidate,
+				VoteFor:                txscript.PkScriptToAddress(v.VoteForPkScript, chainParams).String(),
+				VoteTxid:               rec.Hash.String(),
+				VoteBlock:              block.Height,
+				ExpirationBlock:        block.Height + db.VoteExpirationBlocks,
+				EstimatedExpirationSec: expSec.Unix(),
+			}
+		}
+	}
+	return nil
+}
+
 // updateMinedBalance updates the mined balance within the store, if changed,
 // after processing the given transaction record.
 func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
@@ -215,6 +237,8 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 	}
 
 	spentByAddress := map[string]btcutil.Amount{}
+
+	vote := getVote(rec, block, s.chainParams)
 
 	for i, input := range rec.MsgTx.TxIn {
 		uns, err := unspent.Get(ns, &input.PreviousOutPoint)
@@ -241,11 +265,13 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 			continue
 		}
 
-		prevAddr := "unknown"
+		prevAddrStr := "unknown"
+		var prevAddr btcutil.Address
 		if prevPk, err := AddressForOutPoint(ns, &input.PreviousOutPoint); err != nil {
 			log.Warnf("Error decoding address spent from because [%s]", err.String())
 		} else if prevPk != nil {
-			prevAddr = txscript.PkScriptToAddress(prevPk, s.chainParams).String()
+			prevAddr = txscript.PkScriptToAddress(prevPk, s.chainParams)
+			prevAddrStr = prevAddr.String()
 		}
 
 		// If this output is relevant to us, we'll mark the it as spent
@@ -265,7 +291,29 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 		if err := unspent.Delete(ns, &input.PreviousOutPoint); err != nil {
 			return err
 		}
-		spentByAddress[prevAddr] += amt
+		if vote != nil {
+			if prevAddr != nil {
+				if err := putAddressNsVote(ns, prevAddr, vote); err != nil {
+					return err
+				}
+				candidate := ""
+				if vote.IsCandidate {
+					candidate = "+CANDIDATE"
+				}
+				log.Infof("🗳️ [%s%s] from [%s] tx [%s] @ [%s]",
+					log.GreenBg("Confirmed vote"),
+					log.Address(vote.VoteFor),
+					candidate,
+					log.Address(prevAddrStr),
+					log.Txid(rec.Hash.String()),
+					log.Height(block.Height))
+			} else {
+				log.Warnf("Unable to store vote from [%s] because prev address is not known",
+					rec.Hash)
+			}
+			vote = nil
+		}
+		spentByAddress[prevAddrStr] += amt
 	}
 
 	for addr, amt := range spentByAddress {

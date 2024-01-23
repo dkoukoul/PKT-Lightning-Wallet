@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/generated/proto/rpc_pb"
 	"github.com/pkt-cash/pktd/pktlog/log"
 
 	"github.com/pkt-cash/pktd/pktwallet/chainiface"
@@ -92,6 +93,29 @@ func (w *Wallet) _rollbackBlock(dbtx walletdb.ReadWriteTx, bs waddrmgr.BlockStam
 	w.NtfnServer.notifyDetachedBlock(&bs.Hash)
 
 	return nil
+}
+
+func (w *Wallet) GetVote(addr btcutil.Address) (*rpc_pb.AddressVoteInfo, er.R) {
+	var out *rpc_pb.AddressVoteInfo
+	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) er.R {
+		bs := w.Manager.SyncedTo()
+		txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
+		if v, err := wtxmgr.FetchAddressNsVote(txmgrNs, addr); err != nil {
+			return err
+		} else if v != nil && bs.Height < v.ExpirationBlock {
+			out = &rpc_pb.AddressVoteInfo{
+				IsCandidate:            v.IsCandidate,
+				VoteFor:                v.VoteFor,
+				VoteTxid:               v.VoteTxid,
+				VoteBlock:              v.VoteBlock,
+				ExpirationBlock:        v.ExpirationBlock,
+				EstimatedExpirationSec: v.EstimatedExpirationSec,
+			}
+			return nil
+		}
+		return nil
+	})
+	return out, err
 }
 
 func (w *Wallet) addRelevantTx(dbtx walletdb.ReadWriteTx, rec *wtxmgr.TxRecord, block *wtxmgr.BlockMeta) er.R {

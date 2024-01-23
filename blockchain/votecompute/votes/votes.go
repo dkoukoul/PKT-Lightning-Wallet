@@ -23,7 +23,7 @@ type NsVote struct {
 	VoteForPkScript         []byte
 }
 
-func getVote(outputScript []byte) *NsVote {
+func GetVote(outputScript []byte) *NsVote {
 	scr, err := parsescript.ParseScript(outputScript)
 	if err != nil {
 		return nil
@@ -64,7 +64,7 @@ txns:
 			if out.Value != 0 {
 				continue
 			}
-			v := getVote(out.PkScript)
+			v := GetVote(out.PkScript)
 			if v != nil {
 				if vote != nil {
 					log.Infof("Ignoring votes in transaction [%s@%d], a transaction can only have one vote",
