@@ -123,6 +123,8 @@ func processProto(inPath string, e *execer) bool {
 			"--pkt-grpc_opt=paths=source_relative",
 			"--pkt-grpc_out=./generated/",
 
+			"--experimental_allow_proto3_optional",
+
 			inPath,
 		)
 		return true
