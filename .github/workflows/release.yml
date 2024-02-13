@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - pktd-v*.*.*
+      - PKT-Lightning-Wallet-v*.*.*
 
 jobs:
   release:
