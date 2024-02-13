@@ -81,7 +81,7 @@ jobs:
         run: echo "RELEASE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: Install packages
-        run: brew install jq bash curl brew-gem
+        run: brew install jq bash curl brew-gem protobuf
 
       - name: Set up Ruby 2.6
         uses: ruby/setup-ruby@v1
