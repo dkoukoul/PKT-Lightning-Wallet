@@ -10,7 +10,7 @@ function build() {
   local VERSION
   VERSION=$(echo "${RELEASE_NAME}" | sed -E 's/.+-v//')
 
-  mv -v "${GITHUB_WORKSPACE}"'/PKT-Lightning-Wallet-mac-'"${VERSION}"'.pkg' \
+  mv -v "${GITHUB_WORKSPACE}"'/pkt-lightning-wallet-mac-'"${VERSION}"'.pkg' \
     "${GITHUB_WORKSPACE}"'/'"${RELEASE_NAME}"'-mac.pkg'
 }
 build

@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - PKT-Lightning-Wallet-v*.*.*
+      - pkt-lightning-wallet-v*.*.*
 
 jobs:
   release:
