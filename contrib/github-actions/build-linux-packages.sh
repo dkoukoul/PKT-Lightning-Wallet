@@ -2,7 +2,7 @@
 
 function build() {
   cd "${GITHUB_WORKSPACE}" || exit
-  source ./do
+  bash -x ./do
 
   cd "${GITHUB_WORKSPACE}" || exit
   bash -x ./contrib/deb/build.sh

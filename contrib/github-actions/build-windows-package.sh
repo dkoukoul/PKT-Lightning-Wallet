@@ -1,9 +1,9 @@
-#!/bin/bash -x
+#!/bin/bash
 
 function build() {
   cd "${GITHUB_WORKSPACE}" || exit
 
-  source ./do GOOS=windows GOARCH=amd64
+  bash -x ./do GOOS=windows GOARCH=amd64
 
   mkdir ./bin/bin
 
