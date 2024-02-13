@@ -6,7 +6,7 @@
 #
 if which fpm; then
 	if which rpmbuild; then
-		fpm -n pktd-linux -s dir -t rpm -v "$(./bin/pld --version | sed 's/.* version //' | tr -d '\n')" ./bin
+		fpm -n PKT-Lightning-Wallet-linux -s dir -t rpm -v "$(./bin/pld --version | sed 's/.* version //' | tr -d '\n')" ./bin
 		echo "RPM file built."
 	else
 		echo "rpmbuild not installed or not reachable"
