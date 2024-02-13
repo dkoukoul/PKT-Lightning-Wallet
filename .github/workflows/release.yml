@@ -58,12 +58,6 @@ jobs:
           PKT_FAIL_DIRTY: 1
           RELEASE_NAME: ${{ env.RELEASE_NAME }}
 
-      - uses: actions/upload-artifact@main
-        with:
-          path: |
-            ${{ github.workspace }}/${{ env.RELEASE_NAME }}-linux-x86_64.rpm
-            ${{ github.workspace }}/${{ env.RELEASE_NAME }}-linux-amd64.deb
-
       - name: Publish release
         run: /bin/bash -c "source $GITHUB_WORKSPACE/contrib/github-actions/release-linux-packages.sh"
         env:
@@ -108,11 +102,6 @@ jobs:
         env:
           PKT_FAIL_DIRTY: 1
           RELEASE_NAME: ${{ env.RELEASE_NAME }}
-
-      - uses: actions/upload-artifact@main
-        with:
-          path: |
-            ${{ github.workspace }}/${{ env.RELEASE_NAME }}-mac.pkg
 
       - name: Publish release
         run: /bin/bash -c "source $GITHUB_WORKSPACE/contrib/github-actions/release-macos-package.sh"
