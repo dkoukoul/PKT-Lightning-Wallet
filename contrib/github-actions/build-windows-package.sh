@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 function build() {
   cd "${GITHUB_WORKSPACE}" || exit

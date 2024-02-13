@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Install fpm
-        run: gem install --no-document fpm
+        run: gem install --no-document fpm -v 1.15.1
 
       - name: Build binaries
         run: /bin/bash -c "source $GITHUB_WORKSPACE/contrib/github-actions/build-linux-packages.sh"
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Install fpm
-        run: gem install --no-document fpm
+        run: gem install --no-document fpm -v 1.15.1
 
       - name: Build binaries
         run: /bin/bash -c "source $GITHUB_WORKSPACE/contrib/github-actions/build-macos-package.sh"
