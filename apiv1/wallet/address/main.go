@@ -161,7 +161,7 @@ func (r *rpc) signmessage(in *rpc_pb.SignMessageRequest) (*rpc_pb.SignMessageRes
 
 	var buf bytes.Buffer
 	wire.WriteVarString(&buf, 0, "Bitcoin Signed Message:\n")
-	buf.Write(msg)
+	wire.WriteVarBytes(&buf, 0, msg)
 	messageHash := chainhash.DoubleHashB(buf.Bytes())
 	sigbytes, err := btcec.SignCompact(btcec.S256(), privKey,
 		messageHash, true)
