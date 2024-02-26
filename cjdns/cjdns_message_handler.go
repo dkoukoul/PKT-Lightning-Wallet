@@ -504,7 +504,7 @@ func createLndQueryRequest(receiverIP string, receiverPubkey string) ([]byte, st
 		log.Errorf("Can not create CJDNS lnd pubkey request, IP is empty")
 		return nil, ""
 	}
-	random := generateRandomNumber()
+	random := int(generateRandomNumber()) // Convert int64 to int
 	requests := 1
 	txid := strconv.Itoa(random) + "/" + strconv.Itoa(requests)
 	msg := map[string]interface{}{
@@ -582,7 +582,7 @@ func createInvoiceRequest(receiverIP string, receiverPubkey string, amount uint6
 		log.Errorf("Can not create CJDNS invoice request, IP is empty")
 		return nil, ""
 	}
-	random := generateRandomNumber()
+	random := int(generateRandomNumber())
 	requests := 1
 	txid := strconv.Itoa(random) + "/" + strconv.Itoa(requests)
 	msg := map[string]interface{}{

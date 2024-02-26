@@ -46,9 +46,9 @@ const (
 	ContentType_MAX          = 0xffff + 2
 )
 
-func generateRandomNumber() int {
+func generateRandomNumber() int64 {
 	rand.Seed(time.Now().UnixNano())
-	return rand.Intn(9000000000) + 1000000000
+	return rand.Int63n(9000000000) + 1000000000
 }
 
 func (c *Cjdns) getSendConn() (*net.UDPConn, error) {
