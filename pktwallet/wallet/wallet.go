@@ -1652,8 +1652,16 @@ func (w *Wallet) describeTxn(txn []byte, vinDetail bool) (*rpc_pb.TransactionInf
 func (w *Wallet) GetTransactions1(req *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
 	start := NewBlockIdentifierFromHeight(req.StartHeight)
 	stop := NewBlockIdentifierFromHeight(req.EndHeight)
+	var startTimestamp int64 = 0
+	if req.StartTimestamp != 0 {
+		startTimestamp = req.StartTimestamp
+	}
+	var endTimestamp int64 = 0
+	if req.EndTimestamp != 0 {
+		endTimestamp = req.EndTimestamp
+	}
 	coinbase := int32(req.Coinbase.Number())
-	txns, err := w.GetTransactions(start, stop, req.TxnsLimit, req.TxnsSkip, coinbase, req.Reversed, nil)
+	txns, err := w.GetTransactions(start, stop, req.TxnsLimit, req.TxnsSkip, coinbase, req.Reversed, startTimestamp, endTimestamp, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1768,6 +1776,8 @@ func (w *Wallet) GetTransactions(
 	startBlock, endBlock *BlockIdentifier,
 	limit, skip, //0 means no limit imposed
 	coinbase int32, reversed bool,
+	startTimestamp int64, 
+	endTimestamp int64,
 	cancel <-chan struct{},
 ) (*GetTransactionsResult, er.R) {
 	var start, end int32 = 0, -1
@@ -1833,6 +1843,14 @@ func (w *Wallet) GetTransactions(
 					} else if coinbase == coinbaseOnly {
 						txs = txs[:1]
 					}
+				}
+				//Checking for time
+				if (startTimestamp > 0) && (endTimestamp > 0) {
+					var blockTime = details[0].Block.Time.Unix()
+					if !((blockTime > startTimestamp) && (blockTime < endTimestamp)) {
+						//Block is not within the requested time range, skip it
+						txs = txs[:0]
+					} 
 				}
 				//Skipping transactions
 				if (skippedtxns + int32(len(txs))) < skip {

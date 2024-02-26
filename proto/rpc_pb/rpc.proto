@@ -809,6 +809,18 @@ message GetTransactionsRequest {
     // If true, the result will include the binary representation of the
     // transactions. Otherwise this array will be empty.
     bool tx_bin = 8;
+
+    // Start timestamp in seconds for date range for which to list transactions.
+    // If date range is not provided, the query will follow start and end height parameters.
+    // Both start and end timestamps must be provided.
+    // start_height and end_height have precedence over start_time and end_time.
+    int64 start_timestamp = 9;
+
+    // End timestamp in seconds for date range for which to list transactions.
+    // If date range is not provided, the query will follow start and end height parameters.
+    // Both start and end timestamps must be provided.
+    // start_height and end_height have precedence over start_time and end_time.
+    int64 end_timestamp = 10;
 }
 
 message TransactionDetails {

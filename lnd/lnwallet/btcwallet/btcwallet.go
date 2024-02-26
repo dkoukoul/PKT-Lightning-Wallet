@@ -598,7 +598,7 @@ func unminedTransactionsToDetail(
 //
 // This is a part of the WalletController interface.
 func (b *BtcWallet) ListTransactionDetails(startHeight,
-	endHeight, skip, limit, coinbase int32, reversed bool) ([]*lnwallet.TransactionDetail, er.R) {
+	endHeight, skip, limit, coinbase int32, reversed bool, startTimestamp, endTimestamp int64) ([]*lnwallet.TransactionDetail, er.R) {
 
 	// Grab the best block the wallet knows of, we'll use this to calculate
 	// # of confirmations shortly below.
@@ -608,7 +608,7 @@ func (b *BtcWallet) ListTransactionDetails(startHeight,
 	// We'll attempt to find all transactions from start to end height.
 	start := base.NewBlockIdentifierFromHeight(startHeight)
 	stop := base.NewBlockIdentifierFromHeight(endHeight)
-	txns, err := b.wallet.GetTransactions(start, stop, limit, skip, coinbase, reversed, nil)
+	txns, err := b.wallet.GetTransactions(start, stop, limit, skip, coinbase, reversed, startTimestamp, endTimestamp, nil)
 	if err != nil {
 		return nil, err
 	}
