@@ -1651,7 +1651,11 @@ func (w *Wallet) describeTxn(txn []byte, vinDetail bool) (*rpc_pb.TransactionInf
 
 func (w *Wallet) GetTransactions1(req *rpc_pb.GetTransactionsRequest) (*rpc_pb.TransactionDetails, er.R) {
 	start := NewBlockIdentifierFromHeight(req.StartHeight)
-	stop := NewBlockIdentifierFromHeight(req.EndHeight)
+	endHeight := req.EndHeight
+	if req.EndHeight == 0 {
+		endHeight = -1
+	}
+	stop := NewBlockIdentifierFromHeight(endHeight)
 	var startTimestamp int64 = 0
 	if req.StartTimestamp != 0 {
 		startTimestamp = req.StartTimestamp
