@@ -45,8 +45,13 @@ func mkVoteScript(willingCandidate bool, voteFor []byte) ([]byte, er.R) {
 	if willingCandidate {
 		buf[0] = 0x01
 	}
-	copy(buf[1:], voteFor)
-	return scriptbuilder.NewScriptBuilder().AddOp(opcode.OP_RETURN).AddData(buf).Script()
+
+	if len(voteFor) > 0 {
+		copy(buf[1:], voteFor)
+		return scriptbuilder.NewScriptBuilder().AddOp(opcode.OP_RETURN).AddData(voteFor).Script()
+	} else {
+		return []byte{opcode.OP_RETURN, opcode.OP_DATA_1, buf[0]}, nil
+	}
 }
 
 func prepareTxReq(

@@ -246,11 +246,18 @@ func (r *rpc) createTransaction(req *rpc_pb.CreateTransactionRequest) (*rpc_pb.C
 }
 
 func (r *rpc) sendvote(req *rpc_pb.SendVoteRequest) (*rpc_pb.SendFromResponse, er.R) {
-	if voteFor, err := btcutil.DecodeAddress(req.VoteFor, r.w.ChainParams()); err != nil {
-		return nil, err
-	} else if voteForScript, err := txscript.PayToAddrScriptWithVote(voteFor, nil, nil); err != nil {
-		return nil, er.Errorf("cannot create voteFor txout script: %s", err)
-	} else if txr, err := prepareTxReq(r.w, map[string]btcutil.Amount{}, nil,
+	var voteFor btcutil.Address
+	var voteForScript []byte
+	if req.VoteFor != "" {
+		var err er.R
+		if voteFor, err = btcutil.DecodeAddress(req.VoteFor, r.w.ChainParams()); err != nil {
+			return nil, err
+		} else if voteForScript, err = txscript.PayToAddrScriptWithVote(voteFor, nil, nil); err != nil {
+			return nil, er.Errorf("cannot create voteFor txout script: %s", err)
+		} 
+	}
+	
+	if txr, err := prepareTxReq(r.w, map[string]btcutil.Amount{}, nil,
 		&[]string{req.FromAddress}, int32(req.MinConf), txrules.DefaultRelayFeePerKb,
 		wallet.SendModeBcasted, nil, int(req.MinHeight), int(req.MaxInputs)); err != nil {
 		return nil, err
