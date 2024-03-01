@@ -48,7 +48,7 @@ func mkVoteScript(willingCandidate bool, voteFor []byte) ([]byte, er.R) {
 
 	if len(voteFor) > 0 {
 		copy(buf[1:], voteFor)
-		return scriptbuilder.NewScriptBuilder().AddOp(opcode.OP_RETURN).AddData(voteFor).Script()
+		return scriptbuilder.NewScriptBuilder().AddOp(opcode.OP_RETURN).AddData(buf).Script()
 	} else {
 		return []byte{opcode.OP_RETURN, opcode.OP_DATA_1, buf[0]}, nil
 	}
